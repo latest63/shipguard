@@ -85,7 +85,9 @@ export default function DashboardPage() {
   const ghSubmit = async () => {
     if (!address || !GITHUB_VERIFY_CONTRACT || !ghHandle.trim() || !ghCode) return;
     const handle = ghHandle.trim().replace(/^@/, "");
-    setGhPhase("submitting");
+    // Stay on the "code" phase: switching to "submitting"/"verifying" would
+    // unmount the card (those phases have no JSX branch), blanking the UI.
+    // The button's ghBusy spinner below shows progress instead.
     setGhBusy(true);
     setGhError("");
     try {
@@ -103,7 +105,6 @@ export default function DashboardPage() {
     } catch (e: any) {
       // Stay on the code screen so the failure reason stays visible instead
       // of snapping back to "Get my code" with the error hidden.
-      setGhPhase("code");
       setGhError(e?.message || "GitHub verification failed");
     } finally {
       setGhBusy(false);
