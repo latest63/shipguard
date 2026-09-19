@@ -104,6 +104,9 @@ export async function POST(req: Request) {
     const user = await userRes.json();
 
     // 2. Scan the user's public gists for the one-time code.
+    //    NOTE: the /users/{h}/gists LIST endpoint returns file metadata only
+    //    (sizes, raw URLs) — it does NOT include file `content`. So we must
+    //    fetch each gist's detail (/gists/{id}) which DOES include content.
     let gistFound = false;
     let gistUrl = "";
     const gistsRes = await fetch(
@@ -111,9 +114,15 @@ export async function POST(req: Request) {
       { headers: { Accept: "application/vnd.github+json" } },
     );
     if (gistsRes.ok) {
-      const gists = (await gistsRes.json()) as Array<{ files: Record<string, { content?: string }>; html_url: string }>;
+      const gists = (await gistsRes.json()) as Array<{ id: string; files: Record<string, { filename?: string }>; html_url: string }>;
       for (const g of gists) {
-        for (const f of Object.values(g.files || {})) {
+        const detailRes = await fetch(
+          `https://api.github.com/gists/${encodeURIComponent(g.id)}`,
+          { headers: { Accept: "application/vnd.github+json" } },
+        );
+        if (!detailRes.ok) continue;
+        const detail = (await detailRes.json()) as { files: Record<string, { content?: string }> };
+        for (const f of Object.values(detail.files || {})) {
           if (f?.content && f.content.includes(code)) {
             gistFound = true;
             gistUrl = g.html_url;
