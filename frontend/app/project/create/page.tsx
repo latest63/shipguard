@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Loader2, Rocket, Github, Check, KeyRound, FileCode } from "lucide-react";
-import { GENLAYER_CHAIN, getGithubVerifyContractAddress } from "@/lib/genlayer/client";
-import { createClient } from "genlayer-js";
+import { getGithubVerifyContractAddress } from "@/lib/genlayer/client";
 import { useAccount } from "wagmi";
 import { upsertProject } from "@/lib/projects";
 import { success, error } from "@/lib/utils/toast";
@@ -20,12 +19,6 @@ function genCode() {
   let out = "";
   for (const n of arr) out += CHARS[n % CHARS.length];
   return out;
-}
-
-function ghClient(address?: `0x${string}`) {
-  const config: any = { chain: GENLAYER_CHAIN };
-  if (address) config.account = address;
-  return createClient(config);
 }
 
 type GhPhase = "idle" | "code" | "submitting" | "verifying" | "verified";
@@ -75,64 +68,21 @@ export default function CreateProjectPage() {
   const ghSubmit = async () => {
     if (!address || !GITHUB_VERIFY_CONTRACT || !ghHandle.trim() || !ghCode) return;
     const handle = ghHandle.trim().replace(/^@/, "");
+    setGhPhase("submitting");
     setGhBusy(true);
     setGhError("");
     try {
-      const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(handle)}`);
-      if (userRes.status === 404) throw new Error(`GitHub user "@${handle}" not found`);
-      if (!userRes.ok) throw new Error(`GitHub API error (HTTP ${userRes.status})`);
-      const user = await userRes.json();
-
-      let gistFound = false;
-      let gistUrl = "";
-      const gistsRes = await fetch(`https://api.github.com/users/${encodeURIComponent(handle)}/gists?per_page=100`);
-      if (gistsRes.ok) {
-        const gists = await gistsRes.json();
-        for (const g of gists) {
-          for (const f of Object.values(g.files || {})) {
-            const raw = f as any;
-            if (raw.content && raw.content.includes(ghCode)) {
-              gistFound = true;
-              gistUrl = g.html_url;
-              break;
-            }
-          }
-          if (gistFound) break;
-        }
-      }
-
-      setGhPhase("submitting");
-      const client = ghClient(address as `0x${string}`);
-      const fees = await client.estimateTransactionFees({});
-      await client.writeContract({
-        address: GITHUB_VERIFY_CONTRACT,
-        functionName: "submit",
-        args: [address, handle, ghCode, user.login, user.type, user.html_url, gistFound, gistUrl],
-        fees,
+      const res = await fetch("/api/github-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, handle, code: ghCode }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `GitHub verification failed (HTTP ${res.status})`);
 
-      setGhPhase("verifying");
-      const fees2 = await client.estimateTransactionFees({});
-      await client.writeContract({
-        address: GITHUB_VERIFY_CONTRACT,
-        functionName: "verify",
-        args: [address],
-        fees: fees2,
-      });
-
-      const h = await client.readContract({
-        address: GITHUB_VERIFY_CONTRACT,
-        functionName: "get_gh_handle",
-        args: [address],
-      });
-      const got = typeof h === "string" ? h : h?.toString() || "";
-      if (got) {
-        setGhVerifiedHandle(got);
-        setGhPhase("verified");
-      } else {
-        setGhPhase("idle");
-        throw new Error("Verification did not resolve to a handle");
-      }
+      const got = typeof data.verifiedHandle === "string" ? data.verifiedHandle : "";
+      setGhVerifiedHandle(got);
+      setGhPhase("verified");
     } catch (e: any) {
       setGhPhase("idle");
       setGhError(e?.message || "GitHub verification failed");
