@@ -8,6 +8,7 @@ import { createClient } from "genlayer-js";
 import { useRouter } from "next/navigation";
 import { fetchProject, type Project } from "@/lib/projects";
 import { Button } from "@/components/ui/button";
+import { Navbar } from "@/components/Navbar";
 
 const GITHUB_VERIFY_CONTRACT = getGithubVerifyContractAddress();
 
@@ -172,6 +173,8 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Navbar />
+
       <main className="flex-grow pt-24 pb-20">
         <div className="shell">
           <div className="max-w-2xl mx-auto">

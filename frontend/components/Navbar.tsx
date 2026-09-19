@@ -51,15 +51,9 @@ export function Navbar() {
         router.push("/explore");
         break;
       case "launch":
-        // Navigate to landing if not already there, then trigger the Launch
-        // form to open. The CreateVaultModal on the landing page listens for
-        // this event; a short delay ensures it has mounted when navigating.
-        const isOnLanding = window.location.pathname === "/";
-        if (!isOnLanding) router.push("/");
-        setTimeout(
-          () => window.dispatchEvent(new Event("shipguard:open-launch")),
-          isOnLanding ? 0 : 200
-        );
+        // Launching happens from the dashboard — it requires a connected
+        // wallet + GitHub verification before a raise can be created.
+        router.push("/dashboard");
         break;
       case "disconnect":
         disconnect();
