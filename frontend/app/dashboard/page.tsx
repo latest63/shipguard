@@ -149,11 +149,12 @@ export default function DashboardPage() {
         setGhVerifiedHandle(got);
         setGhPhase("verified");
       } else {
-        setGhPhase("idle");
         throw new Error("Verification did not resolve to a handle");
       }
     } catch (e: any) {
-      setGhPhase("idle");
+      // Stay on the code screen so the failure reason stays visible instead
+      // of snapping back to "Get my code" with the error hidden.
+      setGhPhase("code");
       setGhError(e?.message || "GitHub verification failed");
     } finally {
       setGhBusy(false);
