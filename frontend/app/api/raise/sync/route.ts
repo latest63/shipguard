@@ -33,6 +33,16 @@ const j = (v: unknown) =>
   JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
 
 // Derive display fields for the explore card from a vault + its condition.
+function parseDeadline(raw: string): string {
+  // Deadlines may be unix-seconds strings (form) or ISO datetimes (legacy).
+  if (!raw) return "";
+  const t = /^\d{1,13}$/.test(raw.trim())
+    ? parseInt(raw.trim(), 10) * (raw.trim().length <= 10 ? 1000 : 1)
+    : new Date(raw).getTime();
+  if (!t || Number.isNaN(t)) return "";
+  return new Date(t).toISOString();
+}
+
 function deriveDisplay(vault: any, condition: any) {
   const repoMatch =
     condition?.check_url?.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i) || [];
@@ -128,8 +138,8 @@ export async function GET(req: Request) {
       if (existingIds.has(vault.id)) continue;
       const condition = conditionByVault.get(vault.id) || {};
       const d = deriveDisplay(vault, condition);
-      // closes_on: vault deadline (ISO date) → yyyy-mm-dd for the date column.
-      const closesOn = d.deadline ? new Date(d.deadline).toISOString() : "";
+      // closes_on: vault deadline (unix-seconds or ISO) → ISO date column.
+      const closesOn = parseDeadline(d.deadline || "");
       const { error } = await supabase.from("raises").insert({
         id: vault.id,
         company: d.company,
