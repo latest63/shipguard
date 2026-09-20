@@ -16,6 +16,11 @@ import {
   Loader2,
   Github,
   Check,
+  GitCommitHorizontal,
+  BookOpen,
+  Globe,
+  Star,
+  Info,
 } from "lucide-react";
 import { createClient } from "genlayer-js";
 import { useAccount } from "wagmi";
@@ -29,9 +34,100 @@ import { error, success } from "@/lib/utils/toast";
 
 const GITHUB_VERIFY_CONTRACT = getGithubVerifyContractAddress();
 
-// A single raise id is minted per submission and reused by both txs:
-//   1. register_condition(id, checkUrl, condition, teamAddress)
-//   2. create_vault(id, teamAddress, deadline, condition, conditionContract)
+// ── Source-of-truth guardrails ────────────────────────────────────────────
+// Users can no longer type an arbitrary condition. They pick a *verifiable*
+// check type, and we generate the exact plain-English condition string the
+// validator will judge, plus the API endpoint it should fetch (more reliable
+// than the rendered HTML page — avoids false/inconclusive verdicts).
+//
+// Commit is the flagship, highlighted and default-selected for the demo.
+// The launch timestamp is embedded into the condition so the validator can
+// compare commit dates against the raise period (launch → deadline).
+
+type CheckType = "commit" | "readme" | "website" | "stars";
+
+interface CheckOption {
+  type: CheckType;
+  label: string;
+  icon: typeof GitCommitHorizontal;
+  description: string;
+  supported: boolean;
+}
+
+const CHECK_OPTIONS: CheckOption[] = [
+  {
+    type: "commit",
+    label: "Commit count",
+    icon: GitCommitHorizontal,
+    description: "Requires a minimum number of commits pushed during the raise period.",
+    supported: true,
+  },
+  {
+    type: "readme",
+    label: "README file",
+    icon: BookOpen,
+    description: "Requires a README on the default branch.",
+    supported: true,
+  },
+  {
+    type: "stars",
+    label: "Star count",
+    icon: Star,
+    description: "Requires the repo to reach a minimum star count.",
+    supported: true,
+  },
+  {
+    type: "website",
+    label: "Live website",
+    icon: Globe,
+    description: "Requires a live page to be reachable.",
+    supported: true,
+  },
+];
+
+const COMMIT_COUNTS = [1, 2, 3, 5, 10, 25];
+const STAR_COUNTS = [1, 5, 10, 25, 50];
+
+// Build the API endpoint the validator fetches (source of truth) from any
+// GitHub repo link — far more reliably parseable than the rendered page.
+function buildApiUrl(rawUrl: string): { apiUrl: string; owner: string; repo: string } {
+  const cleaned = rawUrl.trim().replace(/\/+$/, "");
+  const m = cleaned.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  if (!m) return { apiUrl: cleaned, owner: "", repo: "" };
+  const [, owner, repo] = m;
+  return {
+    apiUrl: `https://api.github.com/repos/${owner}/${repo}`,
+    owner,
+    repo,
+  };
+}
+
+// Generate the exact, verifiable condition string for the selected check.
+function buildCondition(
+  type: CheckType,
+  count: number,
+  repoDisplay: string,
+  launchTs: number,
+): string {
+  const launch = new Date(launchTs).toISOString();
+  switch (type) {
+    case "commit":
+      return `The GitHub repository ${repoDisplay} must have at least ${count} commit${
+        count === 1 ? "" : "s"
+      } pushed after ${launch} (the raise launch time) and before the deadline. Base the count on the commits listed at the check URL.`;
+    case "readme":
+      return `The GitHub repository ${repoDisplay} must have a README file present on its default branch.`;
+    case "stars":
+      return `The GitHub repository ${repoDisplay} must have at least ${count} star${
+        count === 1 ? "" : "s"
+      }.`;
+    case "website":
+      return `The website at the check URL must be reachable and return a successful response.`;
+    default:
+      return "";
+  }
+}
+
 type Step = "form" | "review";
 
 export default function LaunchRaisePage() {
@@ -43,13 +139,16 @@ export default function LaunchRaisePage() {
   const [step, setStep] = useState<Step>("form");
   const [teamAddress, setTeamAddress] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [condition, setCondition] = useState("");
-  const [checkUrl, setCheckUrl] = useState("");
 
-  const [errors, setErrors] = useState({ teamAddress: "", deadline: "", condition: "", checkUrl: "" });
+  // ── Guarded condition fields ────────────────────────────────────────────
+  const [checkType, setCheckType] = useState<CheckType>("commit");
+  const [commitCount, setCommitCount] = useState(1);
+  const [repoUrl, setRepoUrl] = useState("");
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // GitHub verification status for the connected wallet (read-only, via backend route).
+  // GitHub verification status for the connected wallet.
   const [ghHandle, setGhHandle] = useState("");
   const [ghChecked, setGhChecked] = useState(false);
   const [ghChecking, setGhChecking] = useState(true);
@@ -74,23 +173,41 @@ export default function LaunchRaisePage() {
     return () => { cancelled = true; };
   }, [isConnected, address]);
 
+  // Launch timestamp — embedded into commit conditions so the validator can
+  // compare commit dates against the raise period.
+  const launchTs = useMemo(() => Date.now(), []);
+
   const deadlineTimestamp = useMemo(() => {
     if (!deadline) return "";
     return Math.floor(new Date(deadline).getTime() / 1000).toString();
   }, [deadline]);
 
+  const { apiUrl, owner, repo } = useMemo(() => buildApiUrl(repoUrl), [repoUrl]);
+  const repoDisplay = owner && repo ? `${owner}/${repo}` : repoUrl || "the linked repository";
+  const isRepoCheck = checkType === "commit" || checkType === "readme" || checkType === "stars";
+
+  const generatedCondition = useMemo(() => {
+    if (checkType === "commit") return buildCondition(checkType, commitCount, repoDisplay, launchTs);
+    if (checkType === "stars") return buildCondition(checkType, commitCount, repoDisplay, launchTs);
+    return buildCondition(checkType, commitCount, repoDisplay, launchTs);
+  }, [checkType, commitCount, repoDisplay, launchTs]);
+
+  const checkUrl = useMemo(() => (isRepoCheck ? apiUrl : repoUrl.trim()), [isRepoCheck, apiUrl, repoUrl]);
+
   const validateForm = (): boolean => {
-    const next = { teamAddress: "", deadline: "", condition: "", checkUrl: "" };
+    const next: Record<string, string> = {};
     if (!teamAddress.trim()) next.teamAddress = "Team wallet is required";
     else if (!/^0x[a-fA-F0-9]{40}$/.test(teamAddress.trim())) next.teamAddress = "Invalid wallet address";
 
     if (!deadline.trim()) next.deadline = "Close date is required";
     else if (new Date(deadline) <= new Date()) next.deadline = "Close date must be in the future";
 
-    if (!condition.trim()) next.condition = "Condition is required";
-
-    if (!checkUrl.trim()) next.checkUrl = "Evidence URL is required";
-    else if (!/^https?:\/\/.+/.test(checkUrl.trim())) next.checkUrl = "Invalid URL";
+    if (isRepoCheck) {
+      if (!repoUrl.trim()) next.repoUrl = "GitHub repository URL is required";
+      else if (!owner || !repo) next.repoUrl = "Enter a valid GitHub repo URL, e.g. https://github.com/org/project";
+    } else if (!repoUrl.trim() || !/^https?:\/\//.test(repoUrl.trim())) {
+      next.repoUrl = "A valid URL is required";
+    }
 
     setErrors(next);
     return !Object.values(next).some(Boolean);
@@ -107,7 +224,6 @@ export default function LaunchRaisePage() {
       });
       return;
     }
-    // GitHub verification gate — must be verified on-chain to launch.
     if (ghChecking) {
       error("Please wait", { description: "Checking your GitHub verification…" });
       return;
@@ -124,8 +240,6 @@ export default function LaunchRaisePage() {
     const id = `vault-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setSubmitting(true);
     try {
-      // The global MetaMask compat shim (installed in providers.tsx) patches
-      // window.ethereum, so the SDK's write path works without an explicit provider.
       const client = createClient({
         chain: GENLAYER_CHAIN,
         account: address as `0x${string}`,
@@ -136,7 +250,7 @@ export default function LaunchRaisePage() {
       await client.writeContract({
         address: conditionAddress as `0x${string}`,
         functionName: "register_condition",
-        args: [id, checkUrl, condition, teamAddress],
+        args: [id, checkUrl, generatedCondition, teamAddress],
         fees: regFees,
       });
 
@@ -145,7 +259,7 @@ export default function LaunchRaisePage() {
       await client.writeContract({
         address: vaultAddress as `0x${string}`,
         functionName: "create_vault",
-        args: [id, teamAddress, deadlineTimestamp, condition, conditionAddress],
+        args: [id, teamAddress, deadlineTimestamp, generatedCondition, conditionAddress],
         fees: cvFees,
       });
 
@@ -172,6 +286,8 @@ export default function LaunchRaisePage() {
     setStep("review");
   };
 
+  const countOptions = checkType === "stars" ? STAR_COUNTS : COMMIT_COUNTS;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -185,25 +301,21 @@ export default function LaunchRaisePage() {
               <ArrowLeft className="w-4 h-4" /> Back to dashboard
             </button>
 
-            {/* Header */}
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-4">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase">
                   <Rocket className="w-3 h-3" />
                   Launch a raise
                 </span>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                  Launch a new raise
-                </h1>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Launch a new raise</h1>
               </div>
               <p className="text-sm text-muted-foreground max-w-lg leading-relaxed">
-                Set the team&apos;s wallet, the condition, the evidence URL, and the close date.
-                Backers deposit GEN — the AI checks the evidence at the close date and releases or
-                refunds automatically. Launching requires a verified GitHub identity.
+                Set the team&apos;s wallet, pick a verifiable source of truth, and choose the close date.
+                Backers deposit GEN — the AI checks the evidence at the close date and releases or refunds
+                automatically. Launching requires a verified GitHub identity.
               </p>
             </div>
 
-            {/* GitHub verification status */}
             {GITHUB_VERIFY_CONTRACT && isConnected && (
               <div className="mb-6">
                 {ghChecking ? (
@@ -224,17 +336,10 @@ export default function LaunchRaisePage() {
                       <Github className="w-4 h-4" /> GitHub verification required
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      You must verify your GitHub account on-chain before launching a raise — this
-                      stops people pointing a raise at someone else&apos;s GitHub as their source of
-                      truth.
+                      You must verify your GitHub account on-chain before launching a raise — this stops
+                      people pointing a raise at someone else&apos;s GitHub as their source of truth.
                     </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push("/dashboard")}
-                      className="gap-1.5"
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => router.push("/dashboard")} className="gap-1.5">
                       <Github className="w-3.5 h-3.5" /> Verify on dashboard
                     </Button>
                   </div>
@@ -252,33 +357,28 @@ export default function LaunchRaisePage() {
                     <p className="eyebrow">Review</p>
                     <p><span className="text-muted-foreground">Team:</span> {teamAddress}</p>
                     <p><span className="text-muted-foreground">Close date:</span> {new Date(deadline).toLocaleString()}</p>
-                    <p><span className="text-muted-foreground">Condition:</span> {condition}</p>
-                    <p className="break-all"><span className="text-muted-foreground">Evidence URL:</span> {checkUrl}</p>
+                    <div className="pt-1 border-t border-border/40">
+                      <p className="eyebrow mt-2">Source of truth</p>
+                      <p className="break-all text-xs text-muted-foreground">URL the validator fetches: {checkUrl}</p>
+                      <p className="mt-3 eyebrow">Condition</p>
+                      <p className="leading-relaxed">{generatedCondition}</p>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    This submits two transactions: first the commitments are registered with the
-                    guardian, then the fund is opened. Both share one fund id.
+                    This submits two transactions: first the condition is registered with the guardian, then the
+                    fund is opened. Both share one fund id.
                   </p>
-                  <Button
-                    type="button"
-                    variant="gradient"
-                    className="w-full"
-                    onClick={createAndRegister}
-                    disabled={submitting}
-                  >
+                  <Button type="button" variant="gradient" className="w-full" onClick={createAndRegister} disabled={submitting}>
                     {submitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Launching…
-                      </>
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Launching…</>
                     ) : (
-                      <>
-                        <Rocket className="w-4 h-4 mr-2" /> Confirm and launch
-                      </>
+                      <><Rocket className="w-4 h-4 mr-2" /> Confirm and launch</>
                     )}
                   </Button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                  {/* Team wallet */}
                   <div className="space-y-2">
                     <Label htmlFor="teamAddress" className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-primary" /> Team wallet
@@ -294,6 +394,7 @@ export default function LaunchRaisePage() {
                     {errors.teamAddress && <p className="text-xs text-destructive">{errors.teamAddress}</p>}
                   </div>
 
+                  {/* Close date */}
                   <div className="space-y-2">
                     <Label htmlFor="deadline" className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-primary" /> Close date
@@ -308,37 +409,112 @@ export default function LaunchRaisePage() {
                     {errors.deadline && <p className="text-xs text-destructive">{errors.deadline}</p>}
                   </div>
 
+                  {/* Source of truth — selectable, verifiable types */}
+                  <div className="space-y-2.5">
+                    <Label className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-primary" /> Source of truth
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {CHECK_OPTIONS.map((opt) => {
+                        const Icon = opt.icon;
+                        const active = checkType === opt.type;
+                        return (
+                          <button
+                            key={opt.type}
+                            type="button"
+                            onClick={() => setCheckType(opt.type)}
+                            className={`text-left rounded-lg border p-3.5 transition-all duration-150 ${
+                              active
+                                ? "border-primary/60 bg-primary/10 ring-1 ring-primary/30"
+                                : "border-border/60 bg-background hover:border-border hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <Icon className={`w-4 h-4 ${active ? "text-primary" : "text-muted-foreground"}`} />
+                              <span className={`text-sm font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                                {opt.label}
+                              </span>
+                              {opt.type === "commit" && (
+                                <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/20 border border-primary/30 text-primary text-[9px] font-bold uppercase tracking-wide">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">{opt.description}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Threshold selector */}
+                  {checkType !== "website" && (
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        {checkType === "commit" && <GitCommitHorizontal className="w-4 h-4 text-primary" />}
+                        {checkType === "readme" && <BookOpen className="w-4 h-4 text-primary" />}
+                        {checkType === "stars" && <Star className="w-4 h-4 text-primary" />}
+                        {checkType === "commit" && "Minimum commits"}
+                        {checkType === "readme" && "Requirement"}
+                        {checkType === "stars" && "Minimum stars"}
+                      </Label>
+                      <div className="flex flex-wrap gap-2">
+                        {countOptions.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setCommitCount(c)}
+                            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-150 ${
+                              commitCount === c
+                                ? "border-primary/60 bg-primary/10 text-primary"
+                                : "border-border/60 bg-background text-muted-foreground hover:border-border"
+                            }`}
+                          >
+                            {c}
+                            {checkType === "commit" && c === 1 ? " commit" : " commits"}
+                            {checkType === "stars" && (c === 1 ? " star" : " stars")}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {checkType === "commit"
+                          ? `Only commits pushed after ${new Date(launchTs).toLocaleString()} count toward the target.`
+                          : "Threshold verified by the AI against the live repository."}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Repo / URL input */}
                   <div className="space-y-2">
-                    <Label htmlFor="condition" className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-primary" /> Condition
+                    <Label htmlFor="repoUrl" className="flex items-center gap-2">
+                      <Link className="w-4 h-4 text-primary" />
+                      {checkType === "website" ? "Website URL" : "GitHub repository URL"}
                     </Label>
                     <Input
-                      id="condition"
+                      id="repoUrl"
                       type="text"
-                      placeholder="e.g. Ships v1 and publishes a public changelog"
-                      value={condition}
-                      onChange={(e) => { setCondition(e.target.value); setErrors({ ...errors, condition: "" }); }}
-                      className={errors.condition ? "border-destructive" : ""}
+                      placeholder={isRepoCheck ? "https://github.com/org/project" : "https://example.com"}
+                      value={repoUrl}
+                      onChange={(e) => { setRepoUrl(e.target.value); setErrors({ ...errors, repoUrl: "" }); }}
+                      className={errors.repoUrl ? "border-destructive" : ""}
                     />
-                    {errors.condition && <p className="text-xs text-destructive">{errors.condition}</p>}
+                    {errors.repoUrl && <p className="text-xs text-destructive">{errors.repoUrl}</p>}
+                    {isRepoCheck && owner && repo && (
+                      <p className="text-[11px] text-muted-foreground break-all">
+                        Validator will fetch: <code className="text-foreground/80">{checkUrl}</code>
+                      </p>
+                    )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="checkUrl" className="flex items-center gap-2">
-                      <Link className="w-4 h-4 text-primary" /> Evidence URL
-                    </Label>
-                    <Input
-                      id="checkUrl"
-                      type="url"
-                      placeholder="https://github.com/org/project — the AI checks this at close"
-                      value={checkUrl}
-                      onChange={(e) => { setCheckUrl(e.target.value); setErrors({ ...errors, checkUrl: "" }); }}
-                      className={errors.checkUrl ? "border-destructive" : ""}
-                    />
-                    {errors.checkUrl && <p className="text-xs text-destructive">{errors.checkUrl}</p>}
+                  {/* Generated condition preview */}
+                  <div className="rounded-lg border border-border/60 bg-muted/40 p-4 space-y-1.5">
+                    <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                      <Info className="w-3.5 h-3.5" /> Auto-generated condition
+                    </p>
+                    <p className="text-sm leading-relaxed text-foreground/90">{generatedCondition}</p>
                   </div>
 
-                  <div className="flex gap-3 pt-4">
+                  <div className="flex gap-3 pt-2">
                     <Button type="button" variant="secondary" className="flex-1" onClick={() => router.push("/dashboard")}>
                       Cancel
                     </Button>
