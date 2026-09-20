@@ -26,7 +26,6 @@ import {
   getGithubVerifyContractAddress,
 } from "@/lib/genlayer/client";
 import { error, success } from "@/lib/utils/toast";
-import { getMetaMaskCompatProvider } from "@/lib/metamask-compat";
 
 const GITHUB_VERIFY_CONTRACT = getGithubVerifyContractAddress();
 
@@ -125,11 +124,11 @@ export default function LaunchRaisePage() {
     const id = `vault-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setSubmitting(true);
     try {
+      // The global MetaMask compat shim (installed in providers.tsx) patches
+      // window.ethereum, so the SDK's write path works without an explicit provider.
       const client = createClient({
         chain: GENLAYER_CHAIN,
         account: address as `0x${string}`,
-        // MetaMask dropped eth_sendTransaction; translate it for genlayer-js.
-        provider: getMetaMaskCompatProvider(),
       });
 
       // 1. Register the condition with the governor.
