@@ -8,6 +8,7 @@ import { useAccount } from "wagmi";
 import { Loader2, Coins, Gavel, ShieldCheck, Clock, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCountdown, type CountdownParts } from "@/lib/useCountdown";
+import { info } from "@/lib/utils/toast";
 
 export default function ExplorePage() {
   const [raises, setRaises] = useState<ShippingRaise[]>([]);
@@ -46,7 +47,12 @@ export default function ExplorePage() {
       openConnectModal?.();
       return;
     }
-    // Once connected, this is where the actual deposit transaction goes.
+    // Deposit isn't wired into this explore view yet — give honest feedback
+    // instead of a silent no-op so the button never feels dead.
+    info(`Backing “${raise.company}”`, {
+      description:
+        "Depositing GEN into this raise isn't available from the explore view yet. It's coming shortly.",
+    });
   };
 
   // Derive stats from table data
@@ -484,14 +490,25 @@ function RaiseDetailDialog({
             </div>
           )}
 
-          <Button
-            variant="gradient"
-            size="lg"
-            className="w-full gap-2"
-            onClick={(e) => onBack(e, raise)}
-          >
-            <Coins className="w-5 h-5" /> Back this raise
-          </Button>
+          {countdown.ended ? (
+            <>
+              <Button variant="outline" size="lg" className="w-full gap-2 opacity-60 cursor-not-allowed" disabled>
+                <Zap className="w-5 h-5" /> Raise has ended
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                This round is closed — no longer accepting deposits.
+              </p>
+            </>
+          ) : (
+            <Button
+              variant="gradient"
+              size="lg"
+              className="w-full gap-2"
+              onClick={(e) => onBack(e, raise)}
+            >
+              <Coins className="w-5 h-5" /> Back this raise
+            </Button>
+          )}
         </div>
       </div>
     </div>
