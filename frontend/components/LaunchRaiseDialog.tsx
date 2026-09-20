@@ -12,8 +12,10 @@ import {
   Loader2,
   Github,
   Check,
-  GitBranch,
+  GitCommitHorizontal,
+  BookOpen,
   Star,
+  Info,
   RefreshCw,
 } from "lucide-react";
 import { getGithubVerifyContractAddress } from "@/lib/genlayer/client";
@@ -47,15 +49,87 @@ interface Repo {
   stars: number;
 }
 
+// ── Source-of-truth guardrails (mirrors /raise/create) ──────────────────
+// The deliverable condition is no longer free text. The user picks a
+// *verifiable* check type and a threshold; we generate the exact plain-English
+// condition the validator will judge, plus the GitHub API endpoint it should
+// fetch (more reliable than the rendered HTML page — avoids false/inconclusive
+// verdicts). Commit is the flagship, default and highlighted.
+//
+// The launch timestamp is embedded into commit conditions so the validator can
+// compare commit dates against the raise period (launch → deadline).
+
+type CheckType = "commit" | "readme" | "stars";
+
+interface CheckOption {
+  type: CheckType;
+  label: string;
+  icon: typeof GitCommitHorizontal;
+  description: string;
+}
+
+const CHECK_OPTIONS: CheckOption[] = [
+  {
+    type: "commit",
+    label: "Commit count",
+    icon: GitCommitHorizontal,
+    description: "Requires a minimum number of commits pushed during the raise period.",
+  },
+  {
+    type: "readme",
+    label: "README file",
+    icon: BookOpen,
+    description: "Requires a README on the default branch.",
+  },
+  {
+    type: "stars",
+    label: "Star count",
+    icon: Star,
+    description: "Requires the repo to reach a minimum star count.",
+  },
+];
+
+const COMMIT_COUNTS = [1, 2, 3, 5, 10, 25];
+const STAR_COUNTS = [1, 5, 10, 25, 50];
+
+// GitHub API endpoint the validator fetches (source of truth), derived from
+// the selected repo's full_name — far more reliably parseable than the page.
+function apiUrlFor(fullName: string): string {
+  return `https://api.github.com/repos/${fullName}`;
+}
+
+function buildCondition(
+  type: CheckType,
+  count: number,
+  repoDisplay: string,
+  launchTs: number,
+): string {
+  const launch = new Date(launchTs).toISOString();
+  switch (type) {
+    case "commit":
+      return `The GitHub repository ${repoDisplay} must have at least ${count} commit${
+        count === 1 ? "" : "s"
+      } pushed after ${launch} (the raise launch time) and before the deadline. Base the count on the commits listed at the check URL.`;
+    case "readme":
+      return `The GitHub repository ${repoDisplay} must have a README file present on its default branch.`;
+    case "stars":
+      return `The GitHub repository ${repoDisplay} must have at least ${count} star${
+        count === 1 ? "" : "s"
+      }.`;
+    default:
+      return "";
+  }
+}
+
 /**
  * Launch a raise for a specific project, in a dialog.
  *
  * The form is written for a team raising from a community of investors, and
  * the fields are shaped around the on-chain validator:
- *   - Deliverable condition: a measurable deliverable, public on GitHub
- *     (commits are a great starting point).
+ *   - Deliverable condition: a measurable, verifiable type (commit default).
  *   - Source of truth: because GitHub is verified, we fetch the user's own
  *     PUBLIC repos and let them pick which one the validator should check.
+ *   - Check URL: auto-derived to the GitHub API endpoint for reliable verdicts.
  */
 export function LaunchRaiseDialog({
   open,
@@ -74,7 +148,10 @@ export function LaunchRaiseDialog({
   const [teamAddress, setTeamAddress] = useState("");
   const [useCustomTeam, setUseCustomTeam] = useState(false);
   const [deadline, setDeadline] = useState("");
-  const [condition, setCondition] = useState("");
+
+  // Guarded condition fields
+  const [checkType, setCheckType] = useState<CheckType>("commit");
+  const [threshold, setThreshold] = useState(1);
 
   // Repo picker state
   const [repos, setRepos] = useState<Repo[] | null>(null);
@@ -83,18 +160,17 @@ export function LaunchRaiseDialog({
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState("");
 
-  const [errors, setErrors] = useState({
-    teamAddress: "",
-    deadline: "",
-    condition: "",
-    repo: "",
-  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const deadlineTimestamp = useMemo(() => {
     if (!deadline) return "";
     return Math.floor(new Date(deadline).getTime() / 1000).toString();
   }, [deadline]);
+
+  // Launch timestamp — embedded into commit conditions so the validator can
+  // compare commit dates against the raise period.
+  const launchTs = useMemo(() => Date.now(), []);
 
   // Load the verified user's public repos when the dialog opens.
   const loadRepos = async () => {
@@ -126,13 +202,23 @@ export function LaunchRaiseDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ghHandle]);
 
+  const repoDisplay = selectedRepo?.full_name || "the selected repository";
+
+  const generatedCondition = useMemo(
+    () => buildCondition(checkType, threshold, repoDisplay, launchTs),
+    [checkType, threshold, repoDisplay, launchTs],
+  );
+
+  // Check URL auto-derived to the GitHub API endpoint for reliable verdicts.
+  const checkUrl = useMemo(
+    () => (selectedRepo ? apiUrlFor(selectedRepo.full_name) : ""),
+    [selectedRepo],
+  );
+
+  const countOptions = checkType === "stars" ? STAR_COUNTS : COMMIT_COUNTS;
+
   const validateForm = (): boolean => {
-    const next = {
-      teamAddress: "",
-      deadline: "",
-      condition: "",
-      repo: "",
-    };
+    const next: Record<string, string> = {};
     const team = useCustomTeam ? teamAddress.trim() : (address || "");
     if (!team) next.teamAddress = "Team wallet is required";
     else if (!/^0x[a-fA-F0-9]{40}$/.test(team))
@@ -141,11 +227,6 @@ export function LaunchRaiseDialog({
     if (!deadline.trim()) next.deadline = "Close date is required";
     else if (new Date(deadline) <= new Date())
       next.deadline = "Close date must be in the future";
-
-    if (!condition.trim()) next.condition = "Condition is required";
-    else if (condition.trim().length < 12)
-      next.condition =
-        "Describe a measurable deliverable (e.g. 'at least 50 commits on the main branch')";
 
     if (!selectedRepo) next.repo = "Pick a public repo as the source of truth";
 
@@ -189,13 +270,6 @@ export function LaunchRaiseDialog({
       .toString(36)
       .slice(2, 7)}`;
 
-    // The source of truth is the selected repo's web URL. If a branch was
-    // chosen, point at that branch's tree for a precise, reachable page.
-    const branch = selectedBranch?.trim();
-    const checkUrl = branch
-      ? `${selectedRepo.html_url}/tree/${encodeURIComponent(branch)}`
-      : selectedRepo.html_url;
-
     setSubmitting(true);
     try {
       // Backend-signed (server holds the signer key) — same fix that made
@@ -207,7 +281,7 @@ export function LaunchRaiseDialog({
           id,
           team_address: team,
           deadline: deadlineTimestamp,
-          condition: condition.trim(),
+          condition: generatedCondition,
           check_url: checkUrl,
         }),
       });
@@ -232,13 +306,14 @@ export function LaunchRaiseDialog({
     setTeamAddress("");
     setUseCustomTeam(false);
     setDeadline("");
-    setCondition("");
+    setCheckType("commit");
+    setThreshold(1);
     setRepos(null);
     setSelectedRepo(null);
     setSelectedBranch("");
     setRepoError("");
     setStep("form");
-    setErrors({ teamAddress: "", deadline: "", condition: "", repo: "" });
+    setErrors({});
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -337,17 +412,12 @@ export function LaunchRaiseDialog({
                 {new Date(deadline).toLocaleString()}
               </p>
               <div>
-                <p className="text-muted-foreground">Deliverable condition:</p>
-                <p className="mt-0.5">{condition}</p>
+                <p className="text-muted-foreground">Source of truth (validator fetches):</p>
+                <p className="mt-0.5 break-all text-primary">{checkUrl}</p>
               </div>
-              <div>
-                <p className="text-muted-foreground">Source of truth:</p>
-                <p className="mt-0.5 break-all text-primary">{selectedRepo?.html_url}</p>
-                {selectedBranch && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Branch: {selectedBranch}
-                  </p>
-                )}
+              <div className="pt-1 border-t border-border/40">
+                <p className="eyebrow mt-2">Deliverable condition</p>
+                <p className="leading-relaxed">{generatedCondition}</p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -475,40 +545,6 @@ export function LaunchRaiseDialog({
               )}
             </div>
 
-            {/* Condition */}
-            <div className="space-y-2">
-              <Label htmlFor="ra-condition" className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-primary" /> Deliverable condition
-              </Label>
-              <textarea
-                id="ra-condition"
-                rows={3}
-                placeholder="e.g. The team ships at least 50 commits on the main branch of the selected repo"
-                value={condition}
-                onChange={(e) => {
-                  setCondition(e.target.value);
-                  setErrors({ ...errors, condition: "" });
-                }}
-                className={
-                  "w-full bg-white/[0.03] border border-border rounded-lg px-3 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 resize-y " +
-                  (errors.condition ? "border-destructive" : "")
-                }
-              />
-              <div className="rounded-lg border border-border/40 bg-white/[0.02] p-3">
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  State a <strong>measurable deliverable</strong> that is public on
-                  GitHub and can be checked — for example, a minimum number of
-                  commits on a branch, a released tag, or a merged PR count.
-                  Commits are a strong starting point: they&apos;re permanent,
-                  public, and easy to count. The AI releases funds only if this is
-                  clearly met.
-                </p>
-              </div>
-              {errors.condition && (
-                <p className="text-xs text-destructive">{errors.condition}</p>
-              )}
-            </div>
-
             {/* Source of truth: public repo picker */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -588,25 +624,95 @@ export function LaunchRaiseDialog({
               {selectedRepo && (
                 <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm">
                   <p className="text-[11px] font-medium text-primary mb-1.5">
-                    Selected source of truth
+                    Validator will fetch
                   </p>
-                  <p className="break-all text-sm">{selectedRepo.html_url}</p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <label className="text-[11px] text-muted-foreground shrink-0">
-                      Branch
-                    </label>
-                    <input
-                      type="text"
-                      value={branchFor(selectedRepo)}
-                      onChange={(e) => setSelectedBranch(e.target.value)}
-                      className="w-full bg-white/[0.03] border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
+                  <p className="break-all text-sm">{checkUrl}</p>
                 </div>
               )}
               {errors.repo && (
                 <p className="text-xs text-destructive">{errors.repo}</p>
               )}
+            </div>
+
+            {/* Deliverable type selector */}
+            <div className="space-y-2.5">
+              <Label className="flex items-center gap-2">
+                <GitCommitHorizontal className="w-4 h-4 text-primary" /> Deliverable
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {CHECK_OPTIONS.map((opt) => {
+                  const Icon = opt.icon;
+                  const active = checkType === opt.type;
+                  return (
+                    <button
+                      key={opt.type}
+                      type="button"
+                      onClick={() => setCheckType(opt.type)}
+                      className={`text-left rounded-lg border p-3 transition-all duration-150 ${
+                        active
+                          ? "border-primary/60 bg-primary/10 ring-1 ring-primary/30"
+                          : "border-border/60 bg-background hover:border-border hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className={`w-4 h-4 ${active ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className={`text-sm font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                          {opt.label}
+                        </span>
+                        {opt.type === "commit" && (
+                          <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/20 border border-primary/30 text-primary text-[9px] font-bold uppercase tracking-wide">
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">{opt.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Threshold selector */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                {checkType === "commit" && <GitCommitHorizontal className="w-4 h-4 text-primary" />}
+                {checkType === "readme" && <BookOpen className="w-4 h-4 text-primary" />}
+                {checkType === "stars" && <Star className="w-4 h-4 text-primary" />}
+                {checkType === "commit" && "Minimum commits"}
+                {checkType === "readme" && "Requirement"}
+                {checkType === "stars" && "Minimum stars"}
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {countOptions.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setThreshold(c)}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-150 ${
+                      threshold === c
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border/60 bg-background text-muted-foreground hover:border-border"
+                    }`}
+                  >
+                    {c}
+                    {checkType === "commit" && c === 1 ? " commit" : " commits"}
+                    {checkType === "stars" && (c === 1 ? " star" : " stars")}
+                  </button>
+                ))}
+              </div>
+              {checkType === "commit" && (
+                <p className="text-[11px] text-muted-foreground">
+                  Only commits pushed after {new Date(launchTs).toLocaleString()} count toward the target.
+                </p>
+              )}
+            </div>
+
+            {/* Generated condition preview */}
+            <div className="rounded-lg border border-border/60 bg-muted/40 p-4 space-y-1.5">
+              <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+                <Info className="w-3.5 h-3.5" /> Auto-generated condition
+              </p>
+              <p className="text-sm leading-relaxed text-foreground/90">{generatedCondition}</p>
             </div>
 
             <div className="flex gap-3 pt-2">
