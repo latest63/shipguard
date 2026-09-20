@@ -50,6 +50,17 @@ interface RaiseCreateRequest {
   project_initials?: string;
   project_tint?: string;
   closes_on?: string; // ISO date the explore page shows
+  // Project-linkage fields (raise stems from the launching project).
+  project_id?: string; // uuid of the project (projects.id)
+  project_wallet?: string; // owner wallet
+  github_handle?: string; // verified GitHub handle of the project
+  project_link?: string; // project website
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+  description?: string;
+  creator?: string; // wallet that launched the raise
+  repo_url?: string; // human GitHub URL of the repo used as source of truth
 }
 
 export async function POST(req: Request) {
@@ -151,6 +162,16 @@ export async function POST(req: Request) {
           progress: 0,
           closes_on: closesOn || undefined,
           verified: false,
+          project_id: body?.project_id || undefined,
+          project_wallet: body?.project_wallet || undefined,
+          github_handle: body?.github_handle || undefined,
+          project_link: body?.project_link || undefined,
+          twitter: body?.twitter || undefined,
+          telegram: body?.telegram || undefined,
+          discord: body?.discord || undefined,
+          description: body?.description || undefined,
+          creator: body?.creator || undefined,
+          repo_url: body?.repo_url || undefined,
         });
       } catch (dbErr) {
         // Non-fatal: the raise is live on-chain regardless of display indexing.

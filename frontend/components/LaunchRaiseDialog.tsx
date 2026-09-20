@@ -283,6 +283,7 @@ export function LaunchRaiseDialog({
       tint = tints[h % tints.length];
     }
     const closesOn = deadline ? new Date(deadline).toISOString() : "";
+    const extra = (project?.profile_data || {}) as Record<string, unknown>;
 
     setSubmitting(true);
     try {
@@ -303,6 +304,17 @@ export function LaunchRaiseDialog({
           project_initials: projectInitials,
           project_tint: tint,
           closes_on: closesOn,
+          // Project-linkage (raise stems from the launching project).
+          project_id: project?.id || undefined,
+          project_wallet: project?.wallet_address || undefined,
+          github_handle: ghHandle || undefined,
+          project_link: project?.link || undefined,
+          twitter: (extra.twitter as string) || undefined,
+          telegram: (extra.telegram as string) || undefined,
+          discord: (extra.discord as string) || undefined,
+          description: (extra.description as string) || undefined,
+          creator: address || undefined,
+          repo_url: selectedRepo?.html_url || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));

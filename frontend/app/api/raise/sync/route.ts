@@ -124,7 +124,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ synced: 0, total: 0 });
     }
 
-    // 2. Fetch existing Supabase rows to avoid duplicate ids.
+    // 2. Fetch existing Supabase rows to avoid duplicate ids, and load projects
+    //    so we can attach project-linkage data to each raise.
     const { createClient: createSupabase } = await import("@supabase/supabase-js");
     const supabase = createSupabase(supabaseUrl, supabaseKey);
     const { data: existingRows } = await supabase
@@ -132,25 +133,45 @@ export async function GET(req: Request) {
       .select("id");
     const existingIds = new Set((existingRows || []).map((r: any) => r.id));
 
+    // Index projects by wallet so we can link a raise's creator to a project.
+    const { data: projectsRaw } = await supabase.from("projects").select("*");
+    const projectByWallet = new Map<string, any>();
+    for (const p of projectsRaw || []) {
+      if (p.wallet_address) projectByWallet.set(p.wallet_address.toLowerCase(), p);
+    }
+
     // 3. Insert any vault not already present.
     let inserted = 0;
     for (const vault of vaults) {
       if (existingIds.has(vault.id)) continue;
       const condition = conditionByVault.get(vault.id) || {};
       const d = deriveDisplay(vault, condition);
+      const creatorWallet = (vault.creator || "").toLowerCase();
+      const project = projectByWallet.get(creatorWallet) || {};
+      const profile = (project.profile_data || {}) as Record<string, unknown>;
       // closes_on: vault deadline (unix-seconds or ISO) → ISO date column.
       const closesOn = parseDeadline(d.deadline || "");
       const { error } = await supabase.from("raises").insert({
         id: vault.id,
-        company: d.company,
-        tagline: d.tagline,
+        company: project.name || d.company,
+        tagline: (profile.description as string) || d.tagline,
         initials: d.initials,
         tint: d.tint,
-        logo_url: d.logo_url || null,
-        raised: "0",
+        logo_url: project.logo_url || d.logo_url || null,
+        raised: d.total_deposited || "0",
         progress: 0,
         closes_on: closesOn || null,
-        verified: false,
+        verified: Boolean(project.github_handle),
+        project_id: project.id || null,
+        project_wallet: project.wallet_address || creatorWallet || null,
+        github_handle: project.github_handle || null,
+        project_link: project.link || null,
+        twitter: (profile.twitter as string) || null,
+        telegram: (profile.telegram as string) || null,
+        discord: (profile.discord as string) || null,
+        description: (profile.description as string) || null,
+        creator: vault.creator || null,
+        repo_url: condition.check_url || null,
       });
       if (!error) inserted++;
     }

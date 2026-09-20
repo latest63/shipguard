@@ -21,6 +21,17 @@ export interface ShippingRaise {
   progress: number;
   closes_on: string;
   verified: boolean;
+  // Project-linkage fields (raise stems from the launching project).
+  project_id?: string | null;
+  project_wallet?: string | null;
+  github_handle?: string | null;
+  project_link?: string | null;
+  twitter?: string | null;
+  telegram?: string | null;
+  discord?: string | null;
+  description?: string | null;
+  creator?: string | null;
+  repo_url?: string | null;
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
