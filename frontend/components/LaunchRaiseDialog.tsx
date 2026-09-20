@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAccount } from "wagmi";
 import {
   Rocket,
@@ -12,6 +12,9 @@ import {
   Loader2,
   Github,
   Check,
+  GitBranch,
+  Star,
+  RefreshCw,
 } from "lucide-react";
 import { createClient } from "genlayer-js";
 import {
@@ -37,15 +40,24 @@ const GITHUB_VERIFY_CONTRACT = getGithubVerifyContractAddress();
 
 type Step = "form" | "review";
 
+interface Repo {
+  full_name: string;
+  html_url: string;
+  description: string | null;
+  default_branch: string;
+  pushed_at: string | null;
+  stars: number;
+}
+
 /**
  * Launch a raise for a specific project, in a dialog.
  *
- * The raise is scoped to the project passed in:
- *   - team wallet defaults to the connected creator (or project.team_wallet)
- *   - the raise id is namespaced with the project name so it is clearly
- *     associated ("<project>-<timestamp>")
- *   - the confirmed GitHub handle of the launching wallet is shown and guards
- *     submission (wallet-level, required to launch)
+ * The form is written for a team raising from a community of investors, and
+ * the fields are shaped around the on-chain validator:
+ *   - Deliverable condition: a measurable deliverable, public on GitHub
+ *     (commits are a great starting point).
+ *   - Source of truth: because GitHub is verified, we fetch the user's own
+ *     PUBLIC repos and let them pick which one the validator should check.
  */
 export function LaunchRaiseDialog({
   open,
@@ -66,12 +78,19 @@ export function LaunchRaiseDialog({
   const [teamAddress, setTeamAddress] = useState("");
   const [deadline, setDeadline] = useState("");
   const [condition, setCondition] = useState("");
-  const [checkUrl, setCheckUrl] = useState("");
+
+  // Repo picker state
+  const [repos, setRepos] = useState<Repo[] | null>(null);
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoError, setRepoError] = useState("");
+  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState("");
+
   const [errors, setErrors] = useState({
     teamAddress: "",
     deadline: "",
     condition: "",
-    checkUrl: "",
+    repo: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,8 +103,43 @@ export function LaunchRaiseDialog({
     return Math.floor(new Date(deadline).getTime() / 1000).toString();
   }, [deadline]);
 
+  // Load the verified user's public repos when the dialog opens.
+  const loadRepos = async () => {
+    if (!ghHandle) return;
+    setRepoLoading(true);
+    setRepoError("");
+    try {
+      const res = await fetch("/api/github-repos?handle=" + encodeURIComponent(ghHandle));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Could not load repos");
+      const list: Repo[] = data?.repos || [];
+      setRepos(list);
+      // Auto-select the most recently pushed repo, with its default branch.
+      if (list.length) {
+        const first = list[0];
+        setSelectedRepo(first);
+        setSelectedBranch(first.default_branch || "");
+      }
+    } catch (e: any) {
+      setRepoError(e?.message || "Could not load your repositories");
+      setRepos([]);
+    } finally {
+      setRepoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && ghHandle) loadRepos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ghHandle]);
+
   const validateForm = (): boolean => {
-    const next = { teamAddress: "", deadline: "", condition: "", checkUrl: "" };
+    const next = {
+      teamAddress: "",
+      deadline: "",
+      condition: "",
+      repo: "",
+    };
     if (!teamAddress.trim()) next.teamAddress = "Team wallet is required";
     else if (!/^0x[a-fA-F0-9]{40}$/.test(teamAddress.trim()))
       next.teamAddress = "Invalid wallet address";
@@ -95,10 +149,11 @@ export function LaunchRaiseDialog({
       next.deadline = "Close date must be in the future";
 
     if (!condition.trim()) next.condition = "Condition is required";
+    else if (condition.trim().length < 12)
+      next.condition =
+        "Describe a measurable deliverable (e.g. 'at least 50 commits on the main branch')";
 
-    if (!checkUrl.trim()) next.checkUrl = "Evidence URL is required";
-    else if (!/^https?:\/\/.+/.test(checkUrl.trim()))
-      next.checkUrl = "Invalid URL";
+    if (!selectedRepo) next.repo = "Pick a public repo as the source of truth";
 
     setErrors(next);
     return !Object.values(next).some(Boolean);
@@ -123,16 +178,28 @@ export function LaunchRaiseDialog({
       });
       return;
     }
+    if (!selectedRepo) {
+      error("Pick a source of truth", {
+        description: "Select a public repo the validator can check.",
+      });
+      return;
+    }
 
     const projectSlug = (project?.name || "project")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 24) || "project";
-    // Namespaced so the raise is clearly tied to this project.
     const id = `raise-${projectSlug}-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 7)}`;
+
+    // The source of truth is the selected repo's web URL. If a branch was
+    // chosen, point at that branch's tree for a precise, reachable page.
+    const branch = selectedBranch?.trim();
+    const checkUrl = branch
+      ? `${selectedRepo.html_url}/tree/${encodeURIComponent(branch)}`
+      : selectedRepo.html_url;
 
     setSubmitting(true);
     try {
@@ -177,9 +244,12 @@ export function LaunchRaiseDialog({
     setTeamAddress("");
     setDeadline("");
     setCondition("");
-    setCheckUrl("");
+    setRepos(null);
+    setSelectedRepo(null);
+    setSelectedBranch("");
+    setRepoError("");
     setStep("form");
-    setErrors({ teamAddress: "", deadline: "", condition: "", checkUrl: "" });
+    setErrors({ teamAddress: "", deadline: "", condition: "", repo: "" });
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -199,9 +269,12 @@ export function LaunchRaiseDialog({
     setStep("review");
   };
 
+  const branchFor = (repo: Repo) =>
+    selectedRepo?.full_name === repo.full_name ? selectedBranch : repo.default_branch || "";
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="brand-card border-2 sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="brand-card border-2 sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Rocket className="w-5 h-5" />
@@ -209,22 +282,23 @@ export function LaunchRaiseDialog({
           </DialogTitle>
           <DialogDescription className="text-sm leading-relaxed">
             {project?.name
-              ? `Open an escrowed raise for "${project.name}". Backers lock GEN — AI verifies the evidence at the close date.`
-              : "Open an escrowed raise. Backers lock GEN — AI verifies the evidence at the close date."}
+              ? `Open an escrowed round for "${project.name}". Backers lock GEN — AI verifies you delivered against the condition before funds release.`
+              : "Open an escrowed round. Backers lock GEN — AI verifies you delivered against the condition before funds release."}
           </DialogDescription>
         </DialogHeader>
 
         {/* GitHub gate */}
-        {GITHUB_VERIFY_CONTRACT && isConnected && (
-          ghHandle ? (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5">
+        {(ghHandle ? (
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5">
+            <p className="text-xs text-primary/90 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-              <p className="text-xs text-primary/90">
-                Launching as verified GitHub <strong>@{ghHandle}</strong>
-                <Check className="w-3.5 h-3.5 inline ml-1.5" />
-              </p>
-            </div>
-          ) : (
+              Raising as verified GitHub <strong>@{ghHandle}</strong>
+              <Check className="w-3.5 h-3.5 inline" />
+            </p>
+            <Github className="w-4 h-4 text-primary shrink-0" />
+          </div>
+        ) : (
+          GITHUB_VERIFY_CONTRACT && (
             <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm space-y-2">
               <div className="flex items-center gap-2 text-destructive font-medium">
                 <Github className="w-4 h-4" /> GitHub verification required
@@ -243,7 +317,7 @@ export function LaunchRaiseDialog({
               </Button>
             </div>
           )
-        )}
+        ))}
 
         {step === "review" ? (
           <div className="mt-4 space-y-4">
@@ -264,24 +338,31 @@ export function LaunchRaiseDialog({
                 {project?.name || "Unnamed project"}
               </p>
               <p>
-                <span className="text-muted-foreground">Team:</span> {teamAddress}
+                <span className="text-muted-foreground">Team wallet:</span>{" "}
+                {teamAddress}
               </p>
               <p>
                 <span className="text-muted-foreground">Close date:</span>{" "}
                 {new Date(deadline).toLocaleString()}
               </p>
-              <p>
-                <span className="text-muted-foreground">Condition:</span>{" "}
-                {condition}
-              </p>
-              <p className="break-all">
-                <span className="text-muted-foreground">Evidence URL:</span>{" "}
-                {checkUrl}
-              </p>
+              <div>
+                <p className="text-muted-foreground">Deliverable condition:</p>
+                <p className="mt-0.5">{condition}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Source of truth:</p>
+                <p className="mt-0.5 break-all text-primary">{selectedRepo?.html_url}</p>
+                {selectedBranch && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Branch: {selectedBranch}
+                  </p>
+                )}
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Submits two transactions: the condition is registered with the
-              guardian, then the fund is opened. Both share one fund id.
+              Submits two transactions: the condition and source of truth are
+              registered with the guardian, then the fund is opened. Both share
+              one fund id.
             </p>
             <Button
               type="button"
@@ -303,6 +384,7 @@ export function LaunchRaiseDialog({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+            {/* Team wallet */}
             <div className="space-y-2">
               <Label htmlFor="ra-team" className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" /> Team wallet
@@ -323,6 +405,7 @@ export function LaunchRaiseDialog({
               )}
             </div>
 
+            {/* Close date */}
             <div className="space-y-2">
               <Label htmlFor="ra-deadline" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-primary" /> Close date
@@ -337,48 +420,146 @@ export function LaunchRaiseDialog({
                 }}
                 className={errors.deadline ? "border-destructive" : ""}
               />
+              <p className="text-[11px] text-muted-foreground">
+                When the round closes and the condition is checked. Backers can
+                deposit until this time.
+              </p>
               {errors.deadline && (
                 <p className="text-xs text-destructive">{errors.deadline}</p>
               )}
             </div>
 
+            {/* Condition */}
             <div className="space-y-2">
               <Label htmlFor="ra-condition" className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-primary" /> Condition
+                <GitBranch className="w-4 h-4 text-primary" /> Deliverable condition
               </Label>
-              <Input
+              <textarea
                 id="ra-condition"
-                type="text"
-                placeholder="e.g. Ships v1 and publishes a public changelog"
+                rows={3}
+                placeholder="e.g. The team ships at least 50 commits on the main branch of the selected repo"
                 value={condition}
                 onChange={(e) => {
                   setCondition(e.target.value);
                   setErrors({ ...errors, condition: "" });
                 }}
-                className={errors.condition ? "border-destructive" : ""}
+                className={
+                  "w-full bg-white/[0.03] border border-border rounded-lg px-3 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 resize-y " +
+                  (errors.condition ? "border-destructive" : "")
+                }
               />
+              <div className="rounded-lg border border-border/40 bg-white/[0.02] p-3">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  State a <strong>measurable deliverable</strong> that is public on
+                  GitHub and can be checked — for example, a minimum number of
+                  commits on a branch, a released tag, or a merged PR count.
+                  Commits are a strong starting point: they&apos;re permanent,
+                  public, and easy to count. The AI releases funds only if this is
+                  clearly met.
+                </p>
+              </div>
               {errors.condition && (
                 <p className="text-xs text-destructive">{errors.condition}</p>
               )}
             </div>
 
+            {/* Source of truth: public repo picker */}
             <div className="space-y-2">
-              <Label htmlFor="ra-url" className="flex items-center gap-2">
-                <Link className="w-4 h-4 text-primary" /> Evidence URL
+              <Label className="flex items-center gap-2">
+                <Link className="w-4 h-4 text-primary" /> Source of truth
               </Label>
-              <Input
-                id="ra-url"
-                type="url"
-                placeholder="https://github.com/org/project — the AI checks this at close"
-                value={checkUrl}
-                onChange={(e) => {
-                  setCheckUrl(e.target.value);
-                  setErrors({ ...errors, checkUrl: "" });
-                }}
-                className={errors.checkUrl ? "border-destructive" : ""}
-              />
-              {errors.checkUrl && (
-                <p className="text-xs text-destructive">{errors.checkUrl}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
+                Pick the <strong>public repo</strong> the validator will check to
+                confirm delivery. These are your public repos under{" "}
+                <strong>@{ghHandle}</strong>.
+              </p>
+
+              {repoLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-3">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading your repositories…
+                </div>
+              ) : repoError ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">{repoError}</p>
+                  <button
+                    type="button"
+                    onClick={loadRepos}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Retry
+                  </button>
+                </div>
+              ) : repos && repos.length > 0 ? (
+                <div className="max-h-44 overflow-y-auto rounded-lg border border-border divide-y divide-border/60">
+                  {repos.map((repo) => (
+                    <button
+                      type="button"
+                      key={repo.full_name}
+                      onClick={() => {
+                        setSelectedRepo(repo);
+                        setSelectedBranch(repo.default_branch || "");
+                        setErrors({ ...errors, repo: "" });
+                      }}
+                      className={
+                        "w-full flex flex-col items-start gap-1 px-3 py-2.5 text-left transition-colors " +
+                        (selectedRepo?.full_name === repo.full_name
+                          ? "bg-primary/10 border-l-2 border-primary"
+                          : "hover:bg-white/[0.03]")
+                      }
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <Check
+                          className={
+                            "w-3.5 h-3.5 shrink-0 " +
+                            (selectedRepo?.full_name === repo.full_name
+                              ? "text-primary"
+                              : "text-transparent")
+                          }
+                        />
+                        <span className="text-sm font-medium truncate">
+                          {repo.full_name}
+                        </span>
+                        {repo.stars > 0 && (
+                          <span className="inline-flex items-center gap-1 ml-auto text-[11px] text-muted-foreground shrink-0">
+                            <Star className="w-3 h-3" /> {repo.stars}
+                          </span>
+                        )}
+                      </div>
+                      {repo.description && (
+                        <p className="text-[11px] text-muted-foreground line-clamp-1 pl-5.5">
+                          {repo.description}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground py-2">
+                  No public repositories found under @{ghHandle}.
+                </p>
+              )}
+
+              {selectedRepo && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm">
+                  <p className="text-[11px] font-medium text-primary mb-1.5">
+                    Selected source of truth
+                  </p>
+                  <p className="break-all text-sm">{selectedRepo.html_url}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <label className="text-[11px] text-muted-foreground shrink-0">
+                      Branch
+                    </label>
+                    <input
+                      type="text"
+                      value={branchFor(selectedRepo)}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                </div>
+              )}
+              {errors.repo && (
+                <p className="text-xs text-destructive">{errors.repo}</p>
               )}
             </div>
 
@@ -395,7 +576,7 @@ export function LaunchRaiseDialog({
                 type="submit"
                 variant="gradient"
                 className="flex-1"
-                disabled={!isConnected}
+                disabled={!isConnected || repoLoading}
               >
                 Continue
               </Button>
