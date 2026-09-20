@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useCallback, useMemo, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { fetchRaises, parseRaised, formatTotal, type ShippingRaise } from "@/lib/raises";
-import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import { useWallet } from "@/lib/genlayer/wallet";
+import { useDeposit } from "@/lib/hooks/useVault";
 import { Loader2, Coins, Gavel, ShieldCheck, Clock, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCountdown, type CountdownParts } from "@/lib/useCountdown";
-import { info } from "@/lib/utils/toast";
+import { success } from "@/lib/utils/toast";
 
 export default function ExplorePage() {
   const [raises, setRaises] = useState<ShippingRaise[]>([]);
   const [filter, setFilter] = useState<"all" | "live" | "ended">("all");
   const [selected, setSelected] = useState<ShippingRaise | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isConnected } = useAccount();
-  const { openConnectModal } = useConnectModal();
 
   useEffect(() => {
     // Self-maintaining sync: pull any on-chain vaults missing from Supabase
@@ -40,20 +38,10 @@ export default function ExplorePage() {
   const visibleRaises =
     filter === "live" ? liveRaises : filter === "ended" ? endedRaises : raises;
 
-  // Back a raise — only asks for wallet when actually clicking Back.
-  const handleBack = (e: React.MouseEvent, raise: ShippingRaise) => {
-    e.stopPropagation();
-    if (!isConnected) {
-      openConnectModal?.();
-      return;
-    }
-    // Deposit isn't wired into this explore view yet — give honest feedback
-    // instead of a silent no-op so the button never feels dead.
-    info(`Backing “${raise.company}”`, {
-      description:
-        "Depositing GEN into this raise isn't available from the explore view yet. It's coming shortly.",
-    });
-  };
+  // After a live deposit succeeds, refetch so the "raised" figures refresh.
+  const refreshRaises = useCallback(() => {
+    fetchRaises().then(setRaises).catch(() => {});
+  }, []);
 
   // Derive stats from table data
   const totalRaised = formatTotal(raises.reduce((sum, r) => sum + parseRaised(r.raised), 0));
@@ -166,7 +154,6 @@ export default function ExplorePage() {
                   key={raise.id}
                   raise={raise}
                   onOpen={() => setSelected(raise)}
-                  onBack={(e) => handleBack(e, raise)}
                 />
               ))}
             </div>
@@ -180,7 +167,7 @@ export default function ExplorePage() {
           raise={selected}
           allRaises={raises}
           onClose={() => setSelected(null)}
-          onBack={handleBack}
+          onDeposited={refreshRaises}
         />
       )}
     </div>
@@ -234,11 +221,9 @@ function initialsBadge(initials: string, tint: string, size = 10) {
 function RaiseCard({
   raise,
   onOpen,
-  onBack,
 }: {
   raise: ShippingRaise;
   onOpen: () => void;
-  onBack: (e: React.MouseEvent) => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const countdown = useCountdown(raise.closes_on);
@@ -362,15 +347,50 @@ function RaiseDetailDialog({
   raise,
   allRaises,
   onClose,
-  onBack,
+  onDeposited,
 }: {
   raise: ShippingRaise;
   allRaises: ShippingRaise[];
   onClose: () => void;
-  onBack: (e: React.MouseEvent, raise: ShippingRaise) => void;
+  onDeposited?: () => void;
 }) {
   const countdown = useCountdown(raise.closes_on);
   const verified = Boolean(raise.github_handle);
+
+  // ── Deposit wiring (live raises) ────────────────────────────────────────
+  // The raise id IS the on-chain vault id, so backers deposit straight into
+  // raise.id. Uses the same wallet + deposit hook as the VaultList component.
+  const { address, isConnected, connectWallet } = useWallet();
+  const deposit = useDeposit();
+  const [amount, setAmount] = useState("");
+  const [depositError, setDepositError] = useState("");
+
+  const handleDeposit = async () => {
+    setDepositError("");
+    if (!isConnected || !address) {
+      try {
+        await connectWallet();
+      } catch {
+        return;
+      }
+    }
+    const gen = parseFloat(amount);
+    if (!amount || Number.isNaN(gen) || gen <= 0) {
+      setDepositError("Enter an amount greater than 0 to back this raise.");
+      return;
+    }
+    const wei = BigInt(Math.round(gen * 1e18)).toString();
+    try {
+      await deposit.mutateAsync({ vault_id: raise.id, amount: wei });
+      success(`Backed with ${gen} GEN`, {
+        description: `Your deposit into ${raise.company} is confirmed on-chain.`,
+      });
+      setAmount("");
+      onDeposited?.();
+    } catch (e: any) {
+      setDepositError(e?.message || "The deposit could not be submitted.");
+    }
+  };
 
   // Metric: number of raises launched by the same project.
   const projectKey = raise.project_id || raise.company;
@@ -500,14 +520,44 @@ function RaiseDetailDialog({
               </p>
             </>
           ) : (
-            <Button
-              variant="gradient"
-              size="lg"
-              className="w-full gap-2"
-              onClick={(e) => onBack(e, raise)}
-            >
-              <Coins className="w-5 h-5" /> Back this raise
-            </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  placeholder="GEN amount"
+                  value={amount}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    setDepositError("");
+                  }}
+                  className="flex-1 min-w-0 rounded-lg border border-border bg-white/[0.02] px-3 py-2.5 text-sm tabular-nums outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                />
+                <Button
+                  variant="gradient"
+                  size="lg"
+                  className="gap-2 shrink-0"
+                  onClick={handleDeposit}
+                  disabled={deposit.isPending}
+                >
+                  {deposit.isPending ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Coins className="w-5 h-5" />
+                  )}
+                  {deposit.isPending ? "Depositing…" : isConnected ? "Back this raise" : "Connect & back"}
+                </Button>
+              </div>
+              {depositError && (
+                <p className="text-xs text-destructive break-words">{depositError}</p>
+              )}
+              <p className="text-center text-xs text-muted-foreground">
+                Locks GEN into this raise's escrow — released to the team only
+                if the condition passes verification.
+              </p>
+            </div>
           )}
         </div>
       </div>
