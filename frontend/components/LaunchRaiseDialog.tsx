@@ -386,10 +386,12 @@ export function LaunchRaiseDialog({
         {/* GitHub gate */}
         {(ghHandle ? (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5">
-            <p className="text-xs text-primary/90 flex items-center gap-2">
+            <p className="text-xs text-primary/90 flex items-center gap-2 min-w-0">
               <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-              Raising as verified GitHub <strong>@{ghHandle}</strong>
-              <Check className="w-3.5 h-3.5 inline" />
+              <span className="truncate">
+                Raising as verified GitHub <strong>@{ghHandle}</strong>
+              </span>
+              <Check className="w-3.5 h-3.5 shrink-0" />
             </p>
             <Github className="w-4 h-4 text-primary shrink-0" />
           </div>
@@ -449,7 +451,7 @@ export function LaunchRaiseDialog({
               </div>
               <div className="pt-1 border-t border-border/40">
                 <p className="eyebrow mt-2">Deliverable condition</p>
-                <p className="leading-relaxed">{generatedCondition}</p>
+                <p className="leading-relaxed break-words">{generatedCondition}</p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -744,7 +746,7 @@ export function LaunchRaiseDialog({
               <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
                 <Info className="w-3.5 h-3.5" /> Auto-generated condition
               </p>
-              <p className="text-sm leading-relaxed text-foreground/90">{generatedCondition}</p>
+              <p className="text-sm leading-relaxed text-foreground/90 break-words">{generatedCondition}</p>
             </div>
 
             <div className="flex gap-3 pt-2">

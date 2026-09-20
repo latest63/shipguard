@@ -286,19 +286,21 @@ function RaiseCard({
       </div>
 
       {/* Footer: raised + repo + click hint */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-1">
+      <div className="flex items-center justify-between gap-3 min-w-0">
+        <div className="flex items-baseline gap-1 shrink-0">
           <span className="text-lg font-bold tabular-nums tracking-tight">{raise.raised}</span>
           <span className="text-[11px] text-muted-foreground">GEN raised</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {raise.repo_url && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Github className="w-3 h-3" />
-              {raise.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
+              <Github className="w-3 h-3 shrink-0" />
+              <span className="truncate max-w-[150px]">
+                {raise.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+              </span>
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-[11px] text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="inline-flex items-center gap-1 text-[11px] text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             Details <ExternalLink className="w-3 h-3" />
           </span>
         </div>
@@ -398,16 +400,18 @@ function RaiseDetailDialog({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-bold tracking-tight">{raise.company}</h2>
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-xl font-bold tracking-tight truncate">{raise.company}</h2>
                 {verified && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-semibold border border-primary/20">
-                    <ShieldCheck className="w-3.5 h-3.5" /> Verified GitHub
-                    {raise.github_handle ? ` @${raise.github_handle}` : ""}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-semibold border border-primary/20 shrink-0">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-[160px]">
+                      Verified GitHub{raise.github_handle ? ` @${raise.github_handle}` : ""}
+                    </span>
                   </span>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
+              <p className="text-sm text-muted-foreground leading-relaxed mt-1.5 break-words">
                 {raise.description || raise.tagline || "Escrowed AI-verified raise."}
               </p>
             </div>
@@ -438,7 +442,7 @@ function RaiseDetailDialog({
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
               Deliverable condition
             </p>
-            <p className="text-sm leading-relaxed bg-muted/40 border border-border rounded-lg p-3">
+            <p className="text-sm leading-relaxed bg-muted/40 border border-border rounded-lg p-3 break-words">
               {raise.description || raise.tagline || "AI-verified deliverable."}
             </p>
           </div>
