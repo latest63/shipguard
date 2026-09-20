@@ -16,13 +16,7 @@ import {
   Star,
   RefreshCw,
 } from "lucide-react";
-import { createClient } from "genlayer-js";
-import {
-  GENLAYER_CHAIN,
-  getVaultContractAddress,
-  getConditionContractAddress,
-  getGithubVerifyContractAddress,
-} from "@/lib/genlayer/client";
+import { getGithubVerifyContractAddress } from "@/lib/genlayer/client";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +31,10 @@ import { error, success } from "@/lib/utils/toast";
 import type { Project } from "@/lib/projects";
 
 const GITHUB_VERIFY_CONTRACT = getGithubVerifyContractAddress();
+
+function shortAddr(a: string) {
+  return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
 
 type Step = "form" | "review";
 
@@ -71,11 +69,10 @@ export function LaunchRaiseDialog({
   ghHandle?: string;
 }) {
   const { address, isConnected } = useAccount();
-  const vaultAddress = getVaultContractAddress();
-  const conditionAddress = getConditionContractAddress();
 
   const [step, setStep] = useState<Step>("form");
   const [teamAddress, setTeamAddress] = useState("");
+  const [useCustomTeam, setUseCustomTeam] = useState(false);
   const [deadline, setDeadline] = useState("");
   const [condition, setCondition] = useState("");
 
@@ -93,10 +90,6 @@ export function LaunchRaiseDialog({
     repo: "",
   });
   const [submitting, setSubmitting] = useState(false);
-
-  // Pre-fill the team wallet with the connected creator wallet (single-project
-  // model: the raise funds go to the wallet that owns the project).
-  const defaultTeam = address || "";
 
   const deadlineTimestamp = useMemo(() => {
     if (!deadline) return "";
@@ -140,8 +133,9 @@ export function LaunchRaiseDialog({
       condition: "",
       repo: "",
     };
-    if (!teamAddress.trim()) next.teamAddress = "Team wallet is required";
-    else if (!/^0x[a-fA-F0-9]{40}$/.test(teamAddress.trim()))
+    const team = useCustomTeam ? teamAddress.trim() : (address || "");
+    if (!team) next.teamAddress = "Team wallet is required";
+    else if (!/^0x[a-fA-F0-9]{40}$/.test(team))
       next.teamAddress = "Invalid wallet address";
 
     if (!deadline.trim()) next.deadline = "Close date is required";
@@ -164,12 +158,6 @@ export function LaunchRaiseDialog({
       error("Please connect your wallet first");
       return;
     }
-    if (!vaultAddress || !conditionAddress) {
-      error("Contract not configured", {
-        description: "Set NEXT_PUBLIC_VAULT_CONTRACT and NEXT_PUBLIC_CONDITION_CONTRACT.",
-      });
-      return;
-    }
     if (!ghHandle) {
       error("Verify your GitHub first", {
         description:
@@ -182,6 +170,13 @@ export function LaunchRaiseDialog({
       error("Pick a source of truth", {
         description: "Select a public repo the validator can check.",
       });
+      return;
+    }
+
+    // Team wallet = connected wallet by default, or the custom one if switched.
+    const team = useCustomTeam ? teamAddress.trim() : (address || "");
+    if (!team) {
+      error("Team wallet is required");
       return;
     }
 
@@ -203,28 +198,21 @@ export function LaunchRaiseDialog({
 
     setSubmitting(true);
     try {
-      // Committed providers.tsx installs the global MetaMask compat shim, so
-      // the SDK's write path works without an explicit provider.
-      const client = createClient({
-        chain: GENLAYER_CHAIN,
-        account: address as `0x${string}`,
+      // Backend-signed (server holds the signer key) — same fix that made
+      // GitHub verification work. No MetaMask write; no eth_sendTransaction.
+      const res = await fetch("/api/raise/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          team_address: team,
+          deadline: deadlineTimestamp,
+          condition: condition.trim(),
+          check_url: checkUrl,
+        }),
       });
-
-      const regFees = await client.estimateTransactionFees({});
-      await client.writeContract({
-        address: conditionAddress as `0x${string}`,
-        functionName: "register_condition",
-        args: [id, checkUrl, condition, teamAddress],
-        fees: regFees,
-      });
-
-      const cvFees = await client.estimateTransactionFees({});
-      await client.writeContract({
-        address: vaultAddress as `0x${string}`,
-        functionName: "create_vault",
-        args: [id, teamAddress, deadlineTimestamp, condition, conditionAddress],
-        fees: cvFees,
-      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not launch raise (HTTP ${res.status})`);
 
       success("Raise launched", {
         description: `Raise for ${project?.name || "your project"} is live. Backers can now deposit GEN into it.`,
@@ -242,6 +230,7 @@ export function LaunchRaiseDialog({
 
   const resetForm = () => {
     setTeamAddress("");
+    setUseCustomTeam(false);
     setDeadline("");
     setCondition("");
     setRepos(null);
@@ -339,7 +328,9 @@ export function LaunchRaiseDialog({
               </p>
               <p>
                 <span className="text-muted-foreground">Team wallet:</span>{" "}
-                {teamAddress}
+                <span className="break-all font-mono">
+                  {useCustomTeam ? teamAddress : (address || "")}
+                </span>
               </p>
               <p>
                 <span className="text-muted-foreground">Close date:</span>{" "}
@@ -386,23 +377,78 @@ export function LaunchRaiseDialog({
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
             {/* Team wallet */}
             <div className="space-y-2">
-              <Label htmlFor="ra-team" className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" /> Team wallet
-              </Label>
-              <Input
-                id="ra-team"
-                type="text"
-                placeholder="0x… — where raise proceeds go"
-                value={teamAddress || defaultTeam}
-                onChange={(e) => {
-                  setTeamAddress(e.target.value);
-                  setErrors({ ...errors, teamAddress: "" });
-                }}
-                className={errors.teamAddress ? "border-destructive" : ""}
-              />
-              {errors.teamAddress && (
-                <p className="text-xs text-destructive">{errors.teamAddress}</p>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ra-team" className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-primary" /> Team wallet
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseCustomTeam((v) => !v);
+                    setErrors({ ...errors, teamAddress: "" });
+                  }}
+                  className="inline-flex items-center gap-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span className="relative inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={useCustomTeam}
+                      readOnly
+                      className="sr-only"
+                    />
+                    <span
+                      className={
+                        "block h-4 w-7 rounded-full border transition-colors " +
+                        (useCustomTeam
+                          ? "bg-primary border-primary"
+                          : "bg-white/10 border-border")
+                      }
+                    />
+                    <span
+                      className={
+                        "absolute left-0.5 top-1/2 -translate-y-1/2 block h-3 w-3 rounded-full bg-white transition-transform " +
+                        (useCustomTeam ? "translate-x-3" : "")
+                      }
+                    />
+                  </span>
+                  Use a different wallet
+                </button>
+              </div>
+
+              {useCustomTeam ? (
+                <>
+                  <Input
+                    id="ra-team"
+                    type="text"
+                    placeholder="0x… — where raise proceeds go"
+                    value={teamAddress}
+                    onChange={(e) => {
+                      setTeamAddress(e.target.value);
+                      setErrors({ ...errors, teamAddress: "" });
+                    }}
+                    className={errors.teamAddress ? "border-destructive" : ""}
+                  />
+                  {errors.teamAddress && (
+                    <p className="text-xs text-destructive">{errors.teamAddress}</p>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-white/[0.02] px-3 py-2.5">
+                  <div className="w-7 h-7 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center">
+                    <Users className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-medium text-foreground">Connected wallet (default)</p>
+                    <p className="text-[11px] text-muted-foreground font-mono truncate">
+                      {address ? shortAddr(address) : "Not connected"}
+                    </p>
+                  </div>
+                  <Check className="w-4 h-4 text-primary shrink-0" />
+                </div>
               )}
+              <p className="text-[11px] text-muted-foreground">
+                Where raise proceeds are released once the condition is met.
+              </p>
             </div>
 
             {/* Close date */}

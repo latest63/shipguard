@@ -16,7 +16,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <WalletProvider>
         {children}
         <Toaster
-          position="top-right"
+          position="bottom-right"
           theme="dark"
           richColors
           closeButton
