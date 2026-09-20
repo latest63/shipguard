@@ -86,8 +86,9 @@ export async function POST(req: Request) {
     });
     if (!isSuccessful(regReceipt)) {
       const detail = (regReceipt as any);
+      const why = detail?.txExecutionError || detail?.error || "";
       return NextResponse.json(
-        { error: `Register condition failed on-chain: ${j(detail).slice(0, 1200)}` },
+        { error: `Register condition failed on-chain: ${j(why) || "see on-chain receipt"}` },
         { status: 502 }
       );
     }
