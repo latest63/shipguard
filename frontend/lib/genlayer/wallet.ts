@@ -1,11 +1,15 @@
 "use client";
 
 /**
- * Re-export wallet functionality from WalletProvider
- * This maintains backward compatibility with existing imports
- * All components that import from this file will now use shared context state
+ * Wallet hook backed by RainbowKit + wagmi (via the compat wrapper).
+ *
+ * This re-exports the migration target from `./wallet-compat`, which delegates
+ * connection to RainbowKit/wagmi — so the wallet the user actually connects
+ * (MetaMask or any RainbowKit wallet) is the one every `useWallet()` consumer
+ * sees. The old hand-rolled `WalletProvider` only knew raw MetaMask and threw
+ * "MetaMask not found" for anything else, so it is no longer the source.
  */
-export { useWallet, WalletProvider } from "./WalletProvider";
+export { useWallet, CompatProvider as WalletProvider } from "../wallet-compat";
 export type { WalletState } from "./WalletProvider";
 
 /**

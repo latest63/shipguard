@@ -2,7 +2,7 @@
 
 import { Toaster } from "sonner";
 import { WagmiProviders } from "@/lib/wagmi-setup";
-import { WalletProvider } from "@/lib/genlayer/WalletProvider";
+import { CompatProvider } from "@/lib/wallet-compat";
 import { installMetaMaskCompat } from "@/lib/metamask-compat";
 
 // MetaMask no longer implements eth_sendTransaction, which genlayer-js
@@ -13,7 +13,7 @@ installMetaMaskCompat();
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProviders>
-      <WalletProvider>
+      <CompatProvider>
         {children}
         <Toaster
           position="bottom-right"
@@ -30,7 +30,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             },
           }}
         />
-      </WalletProvider>
+      </CompatProvider>
     </WagmiProviders>
   );
 }
