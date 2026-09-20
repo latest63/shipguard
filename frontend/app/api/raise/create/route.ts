@@ -43,6 +43,13 @@ interface RaiseCreateRequest {
   deadline: string; // unix seconds (string)
   condition: string; // deliverable condition
   check_url: string; // source-of-truth URL the validator checks
+  // Project display fields — surfaced on the explore page (Supabase `raises`).
+  project_name?: string;
+  project_tagline?: string;
+  project_logo?: string;
+  project_initials?: string;
+  project_tint?: string;
+  closes_on?: string; // ISO date the explore page shows
 }
 
 export async function POST(req: Request) {
@@ -112,6 +119,43 @@ export async function POST(req: Request) {
         { error: `Create vault failed on-chain: ${j((cvReceipt as any).txExecutionError ?? "")}` },
         { status: 502 }
       );
+    }
+
+    // ── Mirror the launch into Supabase `raises` so it appears on explore ──
+    // The on-chain vault is the source of truth. This row is for display only,
+    // so a DB failure must never fail the launch — we best-effort insert.
+    const projectName = body?.project_name?.trim() || id;
+    const projectTagline = body?.project_tagline?.trim() || "";
+    const projectLogo = body?.project_logo?.trim() || "";
+    const projectInitials = body?.project_initials?.trim() || projectName.slice(0, 2).toUpperCase() || "RG";
+    const projectTint = body?.project_tint?.trim() || "#7c5cff";
+    const closesOn = body?.closes_on?.trim() || "";
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "";
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from("raises").insert({
+          id,
+          company: projectName,
+          tagline: projectTagline,
+          initials: projectInitials,
+          tint: projectTint,
+          logo_url: projectLogo,
+          raised: "0",
+          progress: 0,
+          closes_on: closesOn || undefined,
+          verified: false,
+        });
+      } catch (dbErr) {
+        // Non-fatal: the raise is live on-chain regardless of display indexing.
+        console.error("[raise/create] failed to index raise into Supabase:", dbErr);
+      }
     }
 
     return NextResponse.json({ id });

@@ -270,6 +270,20 @@ export function LaunchRaiseDialog({
       .toString(36)
       .slice(2, 7)}`;
 
+    // Display fields for the explore page (Supabase `raises` table).
+    const projectName = project?.name?.trim() || projectSlug;
+    const projectTagline = (project?.profile_data?.description as string) || project?.link || "";
+    const projectInitials = projectName.slice(0, 2).toUpperCase() || "RG";
+    // Deterministic tint from the project name (for the explore initials badge).
+    const tints = ["#7c5cff", "#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6"];
+    let tint = tints[0];
+    if (projectName) {
+      let h = 0;
+      for (let i = 0; i < projectName.length; i++) h = (h * 31 + projectName.charCodeAt(i)) >>> 0;
+      tint = tints[h % tints.length];
+    }
+    const closesOn = deadline ? new Date(deadline).toISOString() : "";
+
     setSubmitting(true);
     try {
       // Backend-signed (server holds the signer key) — same fix that made
@@ -283,6 +297,12 @@ export function LaunchRaiseDialog({
           deadline: deadlineTimestamp,
           condition: generatedCondition,
           check_url: checkUrl,
+          project_name: projectName,
+          project_tagline: projectTagline,
+          project_logo: project?.logo_url || "",
+          project_initials: projectInitials,
+          project_tint: tint,
+          closes_on: closesOn,
         }),
       });
       const data = await res.json().catch(() => ({}));
