@@ -10,16 +10,32 @@ import { Button } from "@/components/ui/button";
 
 export default function ExplorePage() {
   const [raises, setRaises] = useState<ShippingRaise[]>([]);
+  const [filter, setFilter] = useState<"all" | "live" | "ended">("all");
   const [loading, setLoading] = useState(true);
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
 
   useEffect(() => {
-    fetchRaises()
+    // Self-maintaining sync: pull any on-chain vaults missing from Supabase
+    // (e.g. past raises that predate the indexing fix), then load the list.
+    fetch("/api/raise/sync")
+      .catch(() => {})
+      .then(() => fetchRaises())
       .then(setRaises)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Filter raises: Live = close date in the future; Ended = close date passed.
+  const now = Date.now();
+  const liveRaises = raises.filter(
+    (r) => r.closes_on && new Date(r.closes_on).getTime() > now
+  );
+  const endedRaises = raises.filter(
+    (r) => !r.closes_on || new Date(r.closes_on).getTime() <= now
+  );
+  const visibleRaises =
+    filter === "live" ? liveRaises : filter === "ended" ? endedRaises : raises;
 
   // Back a raise — only asks for wallet when actually clicking Back.
   // Browsing the page never requires a connection.
@@ -59,6 +75,31 @@ export default function ExplorePage() {
             </p>
           </div>
 
+          {/* ── Filter tabs: All / Live / Ended ─────────────────────────── */}
+          <div className="flex gap-1.5 mb-6 bg-background border border-border rounded-lg p-1 w-fit">
+            {(["all", "live", "ended"] as const).map((f) => {
+              const active = filter === f;
+              const count =
+                f === "all" ? raises.length : f === "live" ? liveRaises.length : endedRaises.length;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
+                    active
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f}
+                  <span className={`ml-1.5 text-xs tabular-nums ${active ? "text-primary/70" : "text-muted-foreground/60"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* ── Metrics row ──────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
             <MetricCard
@@ -95,17 +136,23 @@ export default function ExplorePage() {
                 Loading open raises...
               </p>
             </div>
-          ) : raises.length === 0 ? (
+          ) : visibleRaises.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
               <Gavel className="w-7 h-7 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-foreground">No open raises yet</p>
+              <p className="text-sm font-medium text-foreground">
+                {filter === "live"
+                  ? "No live raises right now"
+                  : filter === "ended"
+                  ? "No ended raises yet"
+                  : "No open raises yet"}
+              </p>
               <p className="text-xs text-muted-foreground max-w-xs">
                 Raises will appear here once they are launched on-chain.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {raises.map((raise) => (
+              {visibleRaises.map((raise) => (
                 <RaiseRow key={raise.id} raise={raise} onBack={handleBack} />
               ))}
             </div>
