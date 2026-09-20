@@ -85,8 +85,9 @@ export async function POST(req: Request) {
       interval: 5000,
     });
     if (!isSuccessful(regReceipt)) {
+      const detail = (regReceipt as any);
       return NextResponse.json(
-        { error: `Register condition failed on-chain: ${j((regReceipt as any).txExecutionError ?? "")}` },
+        { error: `Register condition failed on-chain: ${j(detail).slice(0, 1200)}` },
         { status: 502 }
       );
     }
