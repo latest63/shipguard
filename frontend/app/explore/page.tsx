@@ -240,17 +240,17 @@ function RaiseCard({
   return (
     <button
       onClick={onOpen}
-      className="text-left bg-background border border-border rounded-lg p-3.5 hover:border-primary/40 hover:bg-white/[0.02] transition-all duration-150 flex flex-col gap-2.5 cursor-pointer group"
+      className="text-left bg-background border border-border rounded-lg p-3.5 hover:border-primary/40 hover:bg-white/[0.02] transition-all duration-150 flex flex-col gap-2.5 cursor-pointer group min-w-0 overflow-hidden"
     >
       {/* Header: logo + name + verified */}
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2.5 min-w-0">
         <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 overflow-hidden shrink-0">
           {logo ?? (
             <img src={initialsBadge(raise.initials || "RG", raise.tint || "#7c5cff")} alt="" className="w-8 h-8 object-contain rounded-md" draggable={false} />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <h3 className="text-sm font-bold tracking-tight truncate">{raise.company}</h3>
             {verified && (
               <span
@@ -261,7 +261,7 @@ function RaiseCard({
               </span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 mt-0.5">
+          <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 mt-0.5 break-words">
             {raise.tagline || "Escrowed AI-verified raise"}
           </p>
         </div>
