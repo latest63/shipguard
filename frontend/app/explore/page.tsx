@@ -148,7 +148,7 @@ export default function ExplorePage() {
               </p>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {visibleRaises.map((raise) => (
                 <RaiseCard
                   key={raise.id}
@@ -232,7 +232,7 @@ function RaiseCard({
     <img
       src={raise.logo_url}
       alt={`${raise.company} logo`}
-      className="w-12 h-12 object-contain rounded-lg"
+      className="w-9 h-9 object-contain rounded-md"
       onError={() => setImgError(true)}
     />
   ) : null;
@@ -240,58 +240,58 @@ function RaiseCard({
   return (
     <button
       onClick={onOpen}
-      className="text-left bg-background border border-border rounded-xl p-5 hover:border-primary/40 hover:bg-white/[0.02] transition-all duration-150 flex flex-col gap-4 cursor-pointer group"
+      className="text-left bg-background border border-border rounded-lg p-3.5 hover:border-primary/40 hover:bg-white/[0.02] transition-all duration-150 flex flex-col gap-2.5 cursor-pointer group"
     >
       {/* Header: logo + name + verified */}
-      <div className="flex items-start gap-3">
-        <div className="relative flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 overflow-hidden shrink-0">
+      <div className="flex items-start gap-2.5">
+        <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 overflow-hidden shrink-0">
           {logo ?? (
-            <img src={initialsBadge(raise.initials || "RG", raise.tint || "#7c5cff")} alt="" className="w-12 h-12 object-contain rounded-lg" draggable={false} />
+            <img src={initialsBadge(raise.initials || "RG", raise.tint || "#7c5cff")} alt="" className="w-8 h-8 object-contain rounded-md" draggable={false} />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold tracking-tight truncate">{raise.company}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold tracking-tight truncate">{raise.company}</h3>
             {verified && (
               <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold border border-primary/20 shrink-0"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-semibold border border-primary/20 shrink-0"
                 title="Verified project GitHub"
               >
-                <ShieldCheck className="w-3 h-3" /> Verified
+                <ShieldCheck className="w-2.5 h-2.5" /> Verified
               </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground leading-snug line-clamp-2 mt-0.5">
+          <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 mt-0.5">
             {raise.tagline || "Escrowed AI-verified raise"}
           </p>
         </div>
       </div>
 
       {/* Countdown */}
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-        <div className="flex items-center gap-2 text-sm">
-          <Clock className="w-4 h-4 text-primary" />
-          <span className="text-muted-foreground text-xs">Closes</span>
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
+        <div className="flex items-center gap-1.5 text-sm">
+          <Clock className="w-3.5 h-3.5 text-primary" />
+          <span className="text-muted-foreground text-[10px]">Closes</span>
         </div>
         <CountdownDisplay parts={countdown} compact />
       </div>
 
       {/* Footer: raised + repo + click hint */}
-      <div className="flex items-center justify-between gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="flex items-baseline gap-1 shrink-0">
-          <span className="text-lg font-bold tabular-nums tracking-tight">{raise.raised}</span>
-          <span className="text-[11px] text-muted-foreground">GEN raised</span>
+          <span className="text-sm font-bold tabular-nums tracking-tight">{raise.raised}</span>
+          <span className="text-[9px] text-muted-foreground">GEN</span>
         </div>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           {raise.repo_url && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground min-w-0">
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground min-w-0">
               <Github className="w-3 h-3 shrink-0" />
-              <span className="truncate max-w-[150px]">
+              <span className="truncate max-w-[100px]">
                 {raise.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
               </span>
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-[11px] text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <span className="inline-flex items-center gap-1 text-[10px] text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             Details <ExternalLink className="w-3 h-3" />
           </span>
         </div>
@@ -323,17 +323,17 @@ export function CountdownDisplay({
     { v: parts.seconds, l: "sec" },
   ];
   return (
-    <div className={`flex items-center gap-1.5 ${compact ? "" : ""}`}>
+    <div className={`flex items-center gap-1 ${compact ? "" : ""}`}>
       {cells.map((c, i) => (
-        <div key={c.l} className="flex items-center gap-1.5">
-          <div className={`flex flex-col items-center justify-center rounded-md bg-background border border-border ${compact ? "px-1.5 py-0.5 min-w-[34px]" : "px-2.5 py-1.5 min-w-[52px]"}`}>
-            <span className={`font-mono font-bold tabular-nums ${compact ? "text-sm" : "text-xl"}`}>
+        <div key={c.l} className="flex items-center gap-1">
+          <div className={`flex flex-col items-center justify-center rounded-md bg-background border border-border ${compact ? "px-1 py-0.5 min-w-[26px]" : "px-2.5 py-1.5 min-w-[52px]"}`}>
+            <span className={`font-mono font-bold tabular-nums ${compact ? "text-xs" : "text-xl"}`}>
               {String(c.v).padStart(2, "0")}
             </span>
           </div>
           {!compact && <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{c.l}</span>}
           {i < cells.length - 1 && (
-            <span className="text-muted-foreground/40 font-bold">:</span>
+            <span className={`text-muted-foreground/40 font-bold ${compact ? "text-[9px]" : ""}`}>:</span>
           )}
         </div>
       ))}
