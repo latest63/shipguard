@@ -367,16 +367,21 @@ function RaiseDetailDialog({
 
   const handleDeposit = async () => {
     setDepositError("");
-    // Two-step connect: if not connected, connect first and stop — the button
-    // becomes "Back this raise" once isConnected/address refresh, at which
-    // point the vault contract is built with the real account.
+    // Two-step connect: if not connected, connect first and wait for state to refresh
+    // The button re-renders with isConnected/address only after a React update.
     if (!isConnected || !address) {
       try {
         await connectWallet();
+        // Wait a tick for wagmi state to propagate to useWallet()
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch {
         return;
       }
-      return;
+      // After connect, re-check if wallet is actually connected (state may have updated)
+      if (!isConnected || !address) {
+        setDepositError("Failed to connect wallet. Please try again.");
+        return;
+      }
     }
     const gen = parseFloat(amount);
     if (!amount || Number.isNaN(gen) || gen <= 0) {
