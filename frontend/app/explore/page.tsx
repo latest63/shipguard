@@ -142,28 +142,28 @@ export default function ExplorePage() {
           </p>
         </div>
 
-        {/* ── Quiet metric line — four facts, no KPI cards ────────────── */}
-        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-[13px] text-muted-foreground mb-6 pb-6 border-b border-border">
-          <span>
-            <b className="text-foreground font-semibold">
-              {String(new Set(raises.map((r) => r.project_id || r.company)).size)}
-            </b>{" "}
-            projects raising
-          </span>
-          <span>
-            <b className="text-foreground font-semibold">{totalRaised}</b> GEN
-            escrowed on-chain
-          </span>
-          <span>
-            <b className="text-foreground font-semibold">
-              {String(raises.filter((r) => r.github_handle).length)}
-            </b>{" "}
-            verified repos
-          </span>
-          <span>
-            <b className="text-foreground font-semibold">{liveCount}</b> live
-            rounds{endedCount ? ` · ${endedCount} ended` : ""}
-          </span>
+        {/* ── Metric cards: the board's four facts ────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+          <MetricTile
+            label="Projects raising"
+            value={String(new Set(raises.map((r) => r.project_id || r.company)).size)}
+            sub="across all rounds"
+          />
+          <MetricTile
+            label="GEN escrowed on-chain"
+            value={totalRaised}
+            sub="live Vault balance"
+          />
+          <MetricTile
+            label="Verified repos"
+            value={String(raises.filter((r) => r.github_handle).length)}
+            sub="project GitHub checked"
+          />
+          <MetricTile
+            label="Live rounds"
+            value={String(liveCount)}
+            sub={endedCount ? `+${endedCount} ended` : "funding now"}
+          />
         </div>
 
         {/* ── Filter tabs: board switches ─────────────────────────────── */}
@@ -215,7 +215,7 @@ export default function ExplorePage() {
               </p>
             </div>
           ) : (
-            <div className="border-t border-border">
+            <div className="flex flex-col gap-3">
               {visibleRaises.map((raise) => (
                 <RaiseRow
                   key={raise.id}
@@ -241,6 +241,22 @@ export default function ExplorePage() {
         />
       )}
       {showGuide && <HowToDialog onClose={() => setShowGuide(false)} />}
+    </div>
+  );
+}
+
+/* ── Metric tile — one fact per card, mono figure ───────────────────────── */
+
+function MetricTile({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="bg-card border border-border rounded-sm px-4 py-3.5 flex flex-col gap-1 min-w-0">
+      <span className="font-mono text-xs text-muted-foreground uppercase tracking-wider truncate">
+        {label}
+      </span>
+      <span className="font-mono text-2xl font-bold tabular-nums tracking-tight text-foreground leading-none">
+        {value}
+      </span>
+      <span className="text-xs text-muted-foreground leading-tight">{sub}</span>
     </div>
   );
 }
@@ -333,7 +349,7 @@ function RaiseRow({
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left border-b border-border hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer group min-w-0"
+      className="w-full text-left border border-border rounded-sm overflow-hidden hover:border-primary/40 hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer group min-w-0"
     >
       <div className="grid grid-cols-1 lg:grid-cols-[168px_1fr_200px_220px] items-stretch">
         {/* Gate: status + round code */}
