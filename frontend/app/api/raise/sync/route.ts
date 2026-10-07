@@ -43,6 +43,20 @@ function parseDeadline(raw: string): string {
   return new Date(t).toISOString();
 }
 
+// wei string → GEN display string (up to 6 decimals, no trailing zeros).
+function weiToGen(weiRaw: string): string {
+  let wei: bigint;
+  try {
+    wei = BigInt(weiRaw || "0");
+  } catch {
+    return "0";
+  }
+  if (wei === 0n) return "0";
+  const whole = wei / 10n ** 18n;
+  const frac = ((wei % 10n ** 18n) / 10n ** 12n).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
 function deriveDisplay(vault: any, condition: any) {
   const repoMatch =
     condition?.check_url?.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i) || [];
@@ -130,8 +144,10 @@ export async function GET(req: Request) {
     const supabase = createSupabase(supabaseUrl, supabaseKey);
     const { data: existingRows } = await supabase
       .from("raises")
-      .select("id");
-    const existingIds = new Set((existingRows || []).map((r: any) => r.id));
+      .select("id, raised");
+    const existingById = new Map(
+      (existingRows || []).map((r: any) => [r.id, r.raised])
+    );
 
     // Index projects by wallet so we can link a raise's creator to a project.
     const { data: projectsRaw } = await supabase.from("projects").select("*");
@@ -140,10 +156,21 @@ export async function GET(req: Request) {
       if (p.wallet_address) projectByWallet.set(p.wallet_address.toLowerCase(), p);
     }
 
-    // 3. Insert any vault not already present.
+    // 3. Insert missing vaults; refresh `raised` on existing rows from chain.
     let inserted = 0;
+    let refreshed = 0;
     for (const vault of vaults) {
-      if (existingIds.has(vault.id)) continue;
+      const chainRaised = weiToGen(vault.total_deposited || "0");
+      if (existingById.has(vault.id)) {
+        if (existingById.get(vault.id) !== chainRaised) {
+          const { error } = await supabase
+            .from("raises")
+            .update({ raised: chainRaised })
+            .eq("id", vault.id);
+          if (!error) refreshed++;
+        }
+        continue;
+      }
       const condition = conditionByVault.get(vault.id) || {};
       const d = deriveDisplay(vault, condition);
       const creatorWallet = (vault.creator || "").toLowerCase();
@@ -158,7 +185,7 @@ export async function GET(req: Request) {
         initials: d.initials,
         tint: d.tint,
         logo_url: project.logo_url || d.logo_url || null,
-        raised: d.total_deposited || "0",
+        raised: chainRaised,
         progress: 0,
         closes_on: closesOn || null,
         verified: Boolean(project.github_handle),
@@ -176,7 +203,7 @@ export async function GET(req: Request) {
       if (!error) inserted++;
     }
 
-    return NextResponse.json({ synced: inserted, total: vaults.length });
+    return NextResponse.json({ synced: inserted, refreshed, total: vaults.length });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Sync failed" },
