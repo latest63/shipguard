@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useCallback, useMemo, useState } from "react";
+import { useEffect, useCallback, useMemo, useState, type ReactNode } from "react";
 import { Navbar } from "@/components/Navbar";
 import { fetchRaises, parseRaised, formatTotal, type ShippingRaise } from "@/lib/raises";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { useDeposit } from "@/lib/hooks/useVault";
-import { Loader2, Coins, Gavel, ShieldCheck, Clock, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers } from "lucide-react";
+import { Loader2, Coins, Gavel, ShieldCheck, Clock, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCountdown, type CountdownParts } from "@/lib/useCountdown";
 import { success } from "@/lib/utils/toast";
@@ -28,6 +28,8 @@ export default function ExplorePage() {
   const [raisedMicro, setRaisedMicro] = useState<number | null>(null);
   // Poll tallies + states per raise (off-chain vote, see /api/raise/polls).
   const [polls, setPolls] = useState<Record<string, PollInfo>>({});
+  // "How to" walkthrough dialog.
+  const [showGuide, setShowGuide] = useState(false);
 
   const fetchPolls = useCallback(() => {
     fetch("/api/raise/polls")
@@ -112,14 +114,23 @@ export default function ExplorePage() {
         <div className="shell">
           {/* ── Header with Live badge ───────────────────────────────────── */}
           <div className="mb-10">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase">
-                <Zap className="w-3 h-3" />
-                Live
-              </span>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                Explore Raises
-              </h1>
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase">
+                  <Zap className="w-3 h-3" />
+                  Live
+                </span>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                  Explore Raises
+                </h1>
+              </div>
+              <button
+                onClick={() => setShowGuide(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 hover:border-primary/50 transition-colors shrink-0"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                How to
+              </button>
             </div>
             <p className="text-sm text-muted-foreground max-w-lg leading-relaxed">
               Every raise is escrowed and stems from a project. Funds are locked
@@ -229,6 +240,7 @@ export default function ExplorePage() {
           onPollUpdate={fetchPolls}
         />
       )}
+      {showGuide && <HowToDialog onClose={() => setShowGuide(false)} />}
     </div>
   );
 }
@@ -807,6 +819,158 @@ function RaiseDetailDialog({
               </p>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── "How to" walkthrough ─────────────────────────────────────────────────── */
+
+type GuideStep = { label: string; body: ReactNode };
+
+const GUIDE_STEPS: GuideStep[] = [
+  {
+    label: "1 · Connect your wallet",
+    body: (
+      <>
+        Press <b>Connect wallet</b> in the navbar and choose MetaMask,
+        WalletConnect, Coinbase Wallet — anything RainbowKit offers. Approve the
+        switch to <b>GenLayer Studio Next (chain 61997)</b>; the app asks for it
+        automatically before every transaction, so nothing gets signed for the
+        wrong network.
+        <br />
+        <span className="text-muted-foreground">
+          Use a normal browser window. Private/incognito windows and plain mobile
+          browsers have no wallet to approve with — on mobile, open MetaMask&apos;s
+          in-app browser.
+        </span>
+      </>
+    ),
+  },
+  {
+    label: "2 · Pick a live raise",
+    body: (
+      <>
+        Each round runs for <b>5 hours</b> and a new one opens <b>every hour</b>,
+        so there is always a round open. The countdown on the card shows when it
+        closes, and <b>GEN raised</b> is read live from the chain — it is the
+        balance sitting in that round&apos;s escrow vault.
+      </>
+    ),
+  },
+  {
+    label: "3 · Back the raise",
+    body: (
+      <>
+        Open a round, enter an amount in GEN, press <b>Deposit</b> and approve it
+        in your wallet. Your GEN locks into the on-chain vault for the rest of the
+        round — the team can&apos;t touch it, and neither can we, until the verdict.
+      </>
+    ),
+  },
+  {
+    label: "4 · Vote in the community poll",
+    body: (
+      <>
+        <b className="text-green-400">Yes — commit</b> asks the team to push the
+        milestone commit before close.{" "}
+        <b className="text-red-400">No — refund</b> lets the round end with every
+        backer paid back. One vote per wallet, <b>off-chain</b>: instant and free,
+        no gas. The tally bar shows where the community stands.
+      </>
+    ),
+  },
+  {
+    label: "5 · T‑30 min — the decision",
+    body: (
+      <>
+        Thirty minutes before close the tally is read. Majority Yes → the bot
+        pushes a <b>real commit</b> to the watched GitHub repo, the card flips to{" "}
+        <b className="text-green-400">✓ Commit found · &lt;sha&gt;</b> and the poll
+        shows a <b>View commit on GitHub</b> link. Majority No, or no votes → no
+        commit, and the round heads for a refund.
+      </>
+    ),
+  },
+  {
+    label: "6 · At close — AI verdict, money moves",
+    body: (
+      <>
+        The condition governor reads the repo&apos;s commit feed for a commit{" "}
+        <b>strictly inside the raise window</b> (open → close).
+        <br />
+        • <b>Commit inside the window</b> → verdict <b>success</b> → the vault{" "}
+        <b className="text-green-400">releases</b> the escrow to the team.
+        <br />
+        • <b>No commit</b> → verdict <b>failure</b> → the vault{" "}
+        <b className="text-red-400">refunds</b> every depositor.
+        <br />
+        Either way the poll keeps a <b>View settlement on-chain</b> link to the
+        explorer transaction, so anyone can verify the payout.
+      </>
+    ),
+  },
+];
+
+function HowToDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-background border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 pb-4 border-b border-border/60 flex items-start justify-between gap-4">
+          <div>
+            <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase mb-2">
+              <HelpCircle className="w-3 h-3" />
+              Demo walkthrough
+            </p>
+            <h2 className="text-xl font-bold tracking-tight">How to try it</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Six steps, about two minutes — from connect to an on-chain payout.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-6 space-y-3">
+          {GUIDE_STEPS.map((step) => (
+            <div
+              key={step.label}
+              className="rounded-lg border border-border bg-muted/30 p-4"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1.5">
+                {step.label}
+              </p>
+              <div className="text-sm leading-relaxed text-foreground/90">
+                {step.body}
+              </div>
+            </div>
+          ))}
+
+          <div className="rounded-lg border border-border/60 p-4 text-xs leading-relaxed text-muted-foreground">
+            Two things to remember: <b className="text-foreground">votes are off-chain</b>{" "}
+            (instant, free, one per wallet) and{" "}
+            <b className="text-foreground">money is always on-chain</b> — every round
+            escrows in the Vault contract on Studio Next and can only end one of two
+            ways: released to the team, or refunded to backers. Nothing in between.
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2.5 rounded-md bg-primary/15 border border-primary/30 text-primary text-sm font-semibold hover:bg-primary/25 transition-colors"
+          >
+            Got it — show me the raises
+          </button>
         </div>
       </div>
     </div>
