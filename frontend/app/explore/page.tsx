@@ -15,6 +15,18 @@ export default function ExplorePage() {
   const [filter, setFilter] = useState<"all" | "live" | "ended">("all");
   const [selected, setSelected] = useState<ShippingRaise | null>(null);
   const [loading, setLoading] = useState(true);
+  // Live "GEN raised" total (micro-GEN, i.e. GEN * 1e6) read from the chain.
+  const [raisedMicro, setRaisedMicro] = useState<number | null>(null);
+
+  // Read the genuine on-chain total (sum of every vault's total_deposited).
+  const fetchChainTotal = useCallback(() => {
+    fetch("/api/raise/total")
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.totalMicroGen === "number") setRaisedMicro(d.totalMicroGen);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Self-maintaining sync: pull any on-chain vaults missing from Supabase
@@ -25,7 +37,8 @@ export default function ExplorePage() {
       .then(setRaises)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+    fetchChainTotal();
+  }, [fetchChainTotal]);
 
   // Filter raises: Live = close date in the future; Ended = close date passed.
   const now = Date.now();
@@ -41,10 +54,19 @@ export default function ExplorePage() {
   // After a live deposit succeeds, refetch so the "raised" figures refresh.
   const refreshRaises = useCallback(() => {
     fetchRaises().then(setRaises).catch(() => {});
-  }, []);
+    fetchChainTotal();
+  }, [fetchChainTotal]);
 
-  // Derive stats from table data
-  const totalRaised = formatTotal(raises.reduce((sum, r) => sum + parseRaised(r.raised), 0));
+  // Genuine on-chain total: sum of every vault's total_deposited (wei → GEN).
+  const totalRaised =
+    raisedMicro === null
+      ? "—"
+      : (() => {
+          const gen = raisedMicro / 1e6;
+          if (gen >= 1e3) return formatTotal(gen); // K/M/B for large totals
+          if (gen === 0) return "0";
+          return gen.toLocaleString(undefined, { maximumFractionDigits: 4 });
+        })();
   const liveCount = liveRaises.length;
   const endedCount = endedRaises.length;
 
