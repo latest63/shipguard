@@ -48,9 +48,12 @@ export function installMetaMaskCompat(): void {
               method: "eth_signTransaction",
               params: [signable],
             });
+            // eth_signTransaction returns { raw: "0x...", tx: {...} }
+            // eth_sendRawTransaction needs the raw hex string, not the object
+            const rawTx = typeof signed === "string" ? signed : signed.raw;
             return target.request({
               method: "eth_sendRawTransaction",
-              params: [signed],
+              params: [rawTx],
             });
           }
           // Everything else passes through to the real MetaMask provider.

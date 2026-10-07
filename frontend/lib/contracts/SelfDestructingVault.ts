@@ -140,9 +140,9 @@ class SelfDestructingVault {
         fees,
       });
       return result.hash;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error depositing to vault:", error);
-      throw new Error("Failed to deposit to vault");
+      throw error;
     }
   }
 
