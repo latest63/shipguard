@@ -152,10 +152,21 @@ export async function GET(req: Request) {
     // 3. Refresh `raised` on existing rows from chain.
     //    No backfill inserts: rows are created only by /api/raise/create at
     //    launch time, so test/legacy vaults never reappear on the explore page.
+    //
+    //    Peak semantics: release()/refund() zero `total_deposited` on-chain at
+    //    settlement, so a settled vault would read back as 0 and its card
+    //    would claim the raise collected nothing. Keep the highest chain value
+    //    ever observed — the number still comes from the chain, we just don't
+    //    lose the raised amount once the escrow empties.
     let refreshed = 0;
     for (const vault of vaults) {
       const chainRaised = weiToGen(vault.total_deposited || "0");
-      if (existingById.has(vault.id) && existingById.get(vault.id) !== chainRaised) {
+      const storedRaised =
+        parseFloat(existingById.get(vault.id) || "0") || 0;
+      if (
+        existingById.has(vault.id) &&
+        (parseFloat(chainRaised) || 0) > storedRaised
+      ) {
         const { error } = await supabase
           .from("raises")
           .update({ raised: chainRaised })

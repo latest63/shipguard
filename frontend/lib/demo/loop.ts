@@ -302,6 +302,17 @@ async function settleClosedRaises() {
       }
       if (decision === "success" || decision === "failure") {
         const fn = decision === "success" ? "release" : "refund";
+        // release() transfers vault.total_deposited — with an empty vault the
+        // transfer of 0 reverts on-chain, which would retry forever and jam
+        // the queue. Nothing to move → mark settled directly.
+        const deposited = BigInt(vault.total_deposited || "0");
+        if (fn === "release" && deposited === 0n) {
+          await db().from("raise_polls")
+            .update({ settled_at: new Date().toISOString(), reason: "release: no funds were deposited — nothing to transfer" })
+            .eq("raise_id", p.raise_id);
+          console.log(`[demo-loop] ${p.raise_id}: settled (success, empty vault — nothing to release)`);
+          continue;
+        }
         const fees = await client.estimateTransactionFees({});
         const tx = await client.writeContract({
           address: VAULT_CONTRACT as `0x${string}`,
@@ -311,12 +322,13 @@ async function settleClosedRaises() {
         });
         const receipt = await client.waitForTransactionReceipt({ hash: tx, waitUntil: "finalized", retries: 400, interval: 5000 });
         if (isSuccessful(receipt)) {
+          const settleTx = String(tx);
           await db().from("raise_polls")
-            .update({ settled_at: new Date().toISOString(), reason: `${fn}: ${verdict?.reason || decision}` })
+            .update({ settled_at: new Date().toISOString(), reason: `${fn}: ${verdict?.reason || decision} · tx ${settleTx}` })
             .eq("raise_id", p.raise_id);
-          console.log(`[demo-loop] ${p.raise_id}: settled -> ${fn}`);
+          console.log(`[demo-loop] ${p.raise_id}: settled -> ${fn} · tx ${settleTx}`);
         } else {
-          console.error(`[demo-loop] ${p.raise_id}: ${fn} failed on-chain`);
+          console.error(`[demo-loop] ${p.raise_id}: ${fn} failed on-chain: ${j((receipt as any).txExecutionError ?? "")}`);
         }
         continue;
       }
@@ -334,9 +346,9 @@ async function settleClosedRaises() {
         });
         await client.waitForTransactionReceipt({ hash: tx, waitUntil: "finalized", retries: 400, interval: 5000 });
         await db().from("raise_polls")
-          .update({ settled_at: new Date().toISOString(), eval_attempts: attempts, reason: "refund: evaluation inconclusive after deadline" })
+          .update({ settled_at: new Date().toISOString(), eval_attempts: attempts, reason: `refund: evaluation inconclusive after deadline · tx ${String(tx)}` })
           .eq("raise_id", p.raise_id);
-        console.log(`[demo-loop] ${p.raise_id}: refund fallback after ${attempts} inconclusive evals`);
+        console.log(`[demo-loop] ${p.raise_id}: refund fallback after ${attempts} inconclusive evals · tx ${String(tx)}`);
       } else {
         await db().from("raise_polls").update({ eval_attempts: attempts }).eq("raise_id", p.raise_id);
       }

@@ -72,10 +72,24 @@ export default function ExplorePage() {
 
   // After a live deposit succeeds, refetch so the "raised" figures refresh.
   const refreshRaises = useCallback(() => {
-    fetchRaises().then(setRaises).catch(() => {});
+    // Re-run the on-chain sync first: it rewrites each card's `raised` from
+    // vault.total_deposited, so the figures move as soon as funds land.
+    fetch("/api/raise/sync")
+      .catch(() => {})
+      .then(() => fetchRaises())
+      .then(setRaises)
+      .catch(() => {});
     fetchChainTotal();
     fetchPolls();
   }, [fetchChainTotal, fetchPolls]);
+
+  // Keep everything live while the tab stays open — the demo loop pushes
+  // commits and settles raises in the background, so a page that never
+  // refetches shows stale zeros.
+  useEffect(() => {
+    const id = setInterval(() => refreshRaises(), 20000);
+    return () => clearInterval(id);
+  }, [refreshRaises]);
 
   // Genuine on-chain total: sum of every vault's total_deposited (wei → GEN).
   const totalRaised =
@@ -151,7 +165,7 @@ export default function ExplorePage() {
               icon={Coins}
               label="GEN raised"
               value={totalRaised}
-              sub="locked in escrow"
+              sub="raised across all rounds"
             />
             <MetricCard
               icon={ShieldCheck}
@@ -335,7 +349,7 @@ function RaiseCard({
           }`}
         >
           {poll.state === "decided_commit" ? (
-            <>✓ Commit found — releases to team</>
+            <>✓ Commit found{poll.commit_sha ? ` · ${poll.commit_sha.slice(0, 7)}` : ""} — releases to team</>
           ) : poll.state === "decided_no_commit" ? (
             <>✗ No commit — backers refunded</>
           ) : (
@@ -417,12 +431,15 @@ function PollWidget({
   address,
   closed,
   onVoted,
+  repoUrl,
 }: {
   raiseId: string;
   poll?: PollInfo;
   address?: string | null;
   closed: boolean;
   onVoted?: () => void;
+  /** Repo the raise stems from — used to build the commit link. */
+  repoUrl?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -431,6 +448,11 @@ function PollWidget({
   const total = yes + no;
   const state = poll?.state ?? "open";
   const pct = total ? Math.round((yes / total) * 100) : 50;
+  const commitSha = poll?.commit_sha || "";
+  const commitUrl = `${(repoUrl || "https://github.com/latest63/shipguard").replace(/\/+$/, "")}/commit/${commitSha}`;
+  // The loop stores the settlement tx hash in the reason ("... · tx 0x…").
+  const settleTx = (poll?.reason || "").match(/tx (0x[0-9a-fA-F]{64})/)?.[1] || "";
+  const cleanReason = (poll?.reason || "").replace(/\s*·\s*tx 0x[0-9a-fA-F]+/, "");
 
   const vote = async (choice: "commit" | "no_commit") => {
     if (!address || busy) return;
@@ -511,13 +533,39 @@ function PollWidget({
           {err && <p className="text-[10px] text-red-400 mt-2">{err}</p>}
         </>
       ) : (
-        <p className="text-[11px] text-muted-foreground">
-          {state === "decided_commit"
-            ? `Decided: commit ${poll?.reason || ""}${poll?.commit_sha ? ` (${poll.commit_sha.slice(0, 7)})` : ""} — the AI condition checks the repo at close.`
-            : state === "decided_no_commit"
-            ? `Decided: ${poll?.reason || "no commit"} — funds refund to backers at close.`
-            : "Voting is closed for this raise."}
-        </p>
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            {state === "decided_commit"
+              ? `Decided: commit ${cleanReason}${commitSha ? ` (${commitSha.slice(0, 7)})` : ""} — the AI condition checks the repo at close.`
+              : state === "decided_no_commit"
+              ? `Decided: ${cleanReason || "no commit"} — funds refund to backers at close.`
+              : "Voting is closed for this raise."}
+          </p>
+          {state === "decided_commit" && commitSha && (
+            <a
+              href={commitUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-green-400 hover:underline"
+            >
+              <Github className="w-3.5 h-3.5" />
+              View commit {commitSha.slice(0, 7)} on GitHub
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {settleTx && (
+            <a
+              href={`https://explorer-studio-dev.genlayer.com/tx/${settleTx}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              View settlement on-chain {settleTx.slice(0, 10)}…
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
       )}
     </div>
   );
@@ -652,14 +700,14 @@ function RaiseDetailDialog({
 
         {/* Metric cards */}
         <div className="grid grid-cols-3 gap-3 p-6 border-b border-border/60">
-          <MetricCard icon={Coins} label="GEN raised" value={raise.raised} sub="locked in this raise" />
+          <MetricCard icon={Coins} label="GEN raised" value={raise.raised} sub="raised in this round" />
           <MetricCard icon={Layers} label="Raises by project" value={String(projectRaiseCount)} sub="launched on-chain" />
           <MetricCard icon={ShieldCheck} label="Status" value={countdown.ended ? "Ended" : "Live"} sub={verified ? "GitHub verified" : "not verified"} />
         </div>
 
         {/* Community poll: commit or not — decided before close */}
         <div className="p-6 border-b border-border/60">
-          <PollWidget raiseId={raise.id} poll={poll} address={address} closed={countdown.ended} onVoted={onPollUpdate} />
+          <PollWidget raiseId={raise.id} poll={poll} address={address} closed={countdown.ended} onVoted={onPollUpdate} repoUrl={raise.repo_url} />
         </div>
 
         {/* Raise-specific details */}
