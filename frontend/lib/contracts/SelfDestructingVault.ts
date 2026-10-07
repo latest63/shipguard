@@ -1,5 +1,5 @@
 import { createClient } from "genlayer-js";
-import { GENLAYER_CHAIN } from "../genlayer/client";
+import { GENLAYER_CHAIN, GENLAYER_CHAIN_ID, getStudioUrl } from "../genlayer/client";
 import type { Vault, CreateVaultParams, DepositParams } from "./types";
 
 /**
@@ -18,31 +18,96 @@ class SelfDestructingVault {
   private vaultAddress: `0x${string}`;
   private conditionAddress: `0x${string}`;
   private client: any;
+  private provider: any = null;
+  private config: any = { chain: GENLAYER_CHAIN };
 
   constructor(vaultAddress: string, conditionAddress: string, address?: string | null) {
     this.vaultAddress = vaultAddress as `0x${string}`;
     this.conditionAddress = conditionAddress as `0x${string}`;
 
-    const config: any = {
-      chain: GENLAYER_CHAIN,
-    };
-
     if (address) {
-      config.account = address as `0x${string}`;
+      this.config.account = address as `0x${string}`;
     }
 
-    this.client = createClient(config);
+    this.client = createClient(this.config);
   }
 
   /**
+   * Attach the EIP-1193 provider of the wallet the user ACTUALLY connected
+   * with. The UI connects through RainbowKit/wagmi, which can hand us
+   * WalletConnect / Coinbase Wallet / Rainbow — none of which inject
+   * `window.ethereum`. Without this, genlayer-js silently falls back to the
+   * bare Studio HTTP RPC for `eth_sendTransaction`, and that node has no
+   * signer, so it answers -32601 "Method not found: eth_sendTransaction".
+   *
+   * The SDK reads `config.provider` on every request, so mutating the config
+   * here is enough — no client rebuild needed.
+   */
+  setProvider(provider: any | null): void {
+    this.provider = provider ?? null;
+    this.config.provider = this.provider;
+  }
+
+  /** 
    * Update the address used for transactions
    */
   updateAccount(address: string): void {
-    const config: any = {
-      chain: GENLAYER_CHAIN,
-      account: address as `0x${string}`,
-    };
-    this.client = createClient(config);
+    this.config.account = address as `0x${string}`;
+    this.client = createClient(this.config);
+  }
+
+  /**
+   * Before any write: put the attached wallet on Studio Next (chain 61997).
+   * genlayer-js skips this check on Studio chains, and a deposit signed while
+   * the wallet sits on another network would be broadcast THERE instead.
+   */
+  private async prepareWallet(): Promise<void> {
+    const provider = this.provider;
+    if (!provider?.request) return;
+    const targetHex = `0x${GENLAYER_CHAIN_ID.toString(16)}`;
+    let current: string | null = null;
+    try {
+      current = await provider.request({ method: "eth_chainId" });
+    } catch {
+      return; // provider can't answer — let the write itself surface the error
+    }
+    if (current && String(current).toLowerCase() === targetHex.toLowerCase()) return;
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: targetHex }],
+      });
+    } catch (e: any) {
+      if (e?.code === 4902) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: targetHex,
+            chainName: GENLAYER_CHAIN.name,
+            nativeCurrency: GENLAYER_CHAIN.nativeCurrency,
+            rpcUrls: [getStudioUrl()],
+            blockExplorerUrls: [],
+          }],
+        });
+      } else {
+        throw new Error(
+          `Switch your wallet to ${GENLAYER_CHAIN.name} (chain ${GENLAYER_CHAIN_ID}) and try again.`
+        );
+      }
+    }
+  }
+
+  /** Turn the SDK's transport failure into something a human can act on. */
+  private static translate(error: any, action: string): Error {
+    const detail = String(error?.details || error?.message || error || "");
+    if (/Method not found|does not exist \/ is not available|eth_sendTransaction/i.test(detail)) {
+      return new Error(
+        `${action}: your wallet never received the request — it went to the RPC instead. ` +
+        `Reconnect with “Connect wallet” and approve the wallet pop-up. ` +
+        `(If you're in a private window or a plain mobile browser, open MetaMask's in-app browser instead.)`
+      );
+    }
+    return error instanceof Error ? error : new Error(`${action} failed.`);
   }
 
   /**
@@ -65,6 +130,7 @@ class SelfDestructingVault {
     teamAddress: string
   ): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFees({});
       const result = await this.client.writeContract({
         address: this.conditionAddress,
@@ -84,6 +150,7 @@ class SelfDestructingVault {
    */
   async evaluateCondition(vaultId: string): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFees({});
       const result = await this.client.writeContract({
         address: this.conditionAddress,
@@ -106,6 +173,7 @@ class SelfDestructingVault {
    */
   async createVault(params: CreateVaultParams, vaultId: string): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFees({});
       const result = await this.client.writeContract({
         address: this.vaultAddress,
@@ -131,6 +199,7 @@ class SelfDestructingVault {
    */
   async deposit(params: DepositParams): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFees({});
       const result = await this.client.writeContract({
         address: this.vaultAddress,
@@ -142,7 +211,7 @@ class SelfDestructingVault {
       return result.hash;
     } catch (error: any) {
       console.error("Error depositing to vault:", error);
-      throw error;
+      throw SelfDestructingVault.translate(error, "Deposit failed");
     }
   }
 
@@ -152,6 +221,7 @@ class SelfDestructingVault {
    */
   async release(vaultId: string): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFeesForWrite({
         address: this.vaultAddress,
         functionName: "release",
@@ -177,6 +247,7 @@ class SelfDestructingVault {
    */
   async refund(vaultId: string): Promise<string> {
     try {
+      await this.prepareWallet();
       const fees = await this.client.estimateTransactionFeesForWrite({
         address: this.vaultAddress,
         functionName: "refund",

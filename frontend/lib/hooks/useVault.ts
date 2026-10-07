@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { useConnections } from "wagmi";
 import SelfDestructingVault from "../contracts/SelfDestructingVault";
 import { getVaultContractAddress, getConditionContractAddress } from "../genlayer/client";
 import { useWallet } from "../genlayer/wallet";
@@ -19,6 +20,7 @@ export function useVaultContract(): SelfDestructingVault | null {
   const { address } = useWallet();
   const vaultAddress = getVaultContractAddress();
   const conditionAddress = getConditionContractAddress();
+  const connections = useConnections();
   const contract = useMemo(() => {
     // Validate contract addresses are configured
     if (!vaultAddress || !conditionAddress) {
@@ -38,6 +40,32 @@ export function useVaultContract(): SelfDestructingVault | null {
     // the genlayer-js client is properly configured with the current account
     return new SelfDestructingVault(vaultAddress, conditionAddress, address);
   }, [vaultAddress, conditionAddress, address]);
+
+  // Hand the contract the EIP-1193 provider of the connector the user is
+  // actually connected with (RainbowKit can be WalletConnect / Coinbase /
+  // Rainbow — none of which define window.ethereum). Writes only reach a
+  // signer through this; without it genlayer-js posts eth_sendTransaction to
+  // the Studio RPC, which has no signer and replies -32601.
+  useEffect(() => {
+    if (!contract) return;
+    let cancelled = false;
+    const conn = connections[0];
+    if (!conn?.connector) {
+      contract.setProvider(null);
+      return;
+    }
+    conn.connector
+      .getProvider()
+      .then((provider: any) => {
+        if (!cancelled) contract.setProvider(provider);
+      })
+      .catch(() => {
+        if (!cancelled) contract.setProvider(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, connections]);
 
   return contract;
 }
