@@ -3,9 +3,10 @@ import { createClient } from "genlayer-js";
 import { studioDevnet } from "genlayer-js/chains";
 
 // ── Live "GEN raised" total, straight from the chain ────────────────────────
-// Reads every vault on the Vault contract and sums total_deposited (wei).
-// This is the source of truth for the explore page's "GEN raised" metric —
-// no Supabase snapshot, no stale rows.
+// Reads vaults on the Vault contract and sums total_deposited (wei) — but only
+// for vaults that are listed as raises on the page (present in the `raises`
+// table). Values are always genuine chain data; Supabase only decides WHICH
+// vaults count, so an empty raises page shows 0.
 
 const RPC_URL: string =
   process.env.NEXT_PUBLIC_GENLAYER_RPC_URL || "https://studio-next.genlayer.com/api";
@@ -23,6 +24,20 @@ export async function GET() {
   }
 
   try {
+    // Which vaults are listed as raises on the page?
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const supabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "";
+    let listedIds: Set<string> | null = null;
+    if (supabaseUrl && supabaseKey) {
+      const { createClient: createSupabase } = await import("@supabase/supabase-js");
+      const supabase = createSupabase(supabaseUrl, supabaseKey);
+      const { data: rows } = await supabase.from("raises").select("id");
+      listedIds = new Set((rows || []).map((r: any) => r.id));
+    }
+
     const chain = { ...studioDevnet, rpcUrls: { default: { http: [RPC_URL] } } };
     const client = createClient({ chain, endpoint: RPC_URL });
 
@@ -44,6 +59,8 @@ export async function GET() {
         ? vault
         : null;
       if (!v) continue;
+      // Skip vaults that aren't listed as raises on the page.
+      if (listedIds && !listedIds.has(v.id)) continue;
       try {
         totalWei += BigInt(v.total_deposited || "0");
         count++;
