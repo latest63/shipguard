@@ -834,17 +834,9 @@ const GUIDE_STEPS: GuideStep[] = [
     label: "1 · Connect your wallet",
     body: (
       <>
-        Press <b>Connect wallet</b> in the navbar and choose MetaMask,
-        WalletConnect, Coinbase Wallet — anything RainbowKit offers. Approve the
-        switch to <b>GenLayer Studio Next (chain 61997)</b>; the app asks for it
-        automatically before every transaction, so nothing gets signed for the
-        wrong network.
-        <br />
-        <span className="text-muted-foreground">
-          Use a normal browser window. Private/incognito windows and plain mobile
-          browsers have no wallet to approve with — on mobile, open MetaMask&apos;s
-          in-app browser.
-        </span>
+        <b>Connect wallet</b> in the navbar, then approve the switch to{" "}
+        <b>Studio Next (chain 61997)</b>. Use a normal browser window — in
+        incognito or a plain mobile browser there&apos;s no wallet to approve.
       </>
     ),
   },
@@ -852,10 +844,8 @@ const GUIDE_STEPS: GuideStep[] = [
     label: "2 · Pick a live raise",
     body: (
       <>
-        Each round runs for <b>5 hours</b> and a new one opens <b>every hour</b>,
-        so there is always a round open. The countdown on the card shows when it
-        closes, and <b>GEN raised</b> is read live from the chain — it is the
-        balance sitting in that round&apos;s escrow vault.
+        Each round runs <b>5 hours</b> and a new one opens every hour. The
+        countdown shows when it closes.
       </>
     ),
   },
@@ -863,9 +853,8 @@ const GUIDE_STEPS: GuideStep[] = [
     label: "3 · Back the raise",
     body: (
       <>
-        Open a round, enter an amount in GEN, press <b>Deposit</b> and approve it
-        in your wallet. Your GEN locks into the on-chain vault for the rest of the
-        round — the team can&apos;t touch it, and neither can we, until the verdict.
+        Open a round, enter an amount, press <b>Deposit</b> and approve it. Your
+        GEN locks in the vault until the verdict.
       </>
     ),
   },
@@ -874,22 +863,18 @@ const GUIDE_STEPS: GuideStep[] = [
     body: (
       <>
         <b className="text-green-400">Yes — commit</b> asks the team to push the
-        milestone commit before close.{" "}
-        <b className="text-red-400">No — refund</b> lets the round end with every
-        backer paid back. One vote per wallet, <b>off-chain</b>: instant and free,
-        no gas. The tally bar shows where the community stands.
+        milestone commit; <b className="text-red-400">No — refund</b> ends the
+        round with everyone paid back. One vote per wallet — instant, no gas.
       </>
     ),
   },
   {
-    label: "5 · T‑30 min — the decision",
+    label: "5 · T‐30 min — the decision",
     body: (
       <>
-        Thirty minutes before close the tally is read. Majority Yes → the bot
-        pushes a <b>real commit</b> to the watched GitHub repo, the card flips to{" "}
-        <b className="text-green-400">✓ Commit found · &lt;sha&gt;</b> and the poll
-        shows a <b>View commit on GitHub</b> link. Majority No, or no votes → no
-        commit, and the round heads for a refund.
+        Thirty minutes before close, majority Yes → a real commit hits GitHub and
+        the card flips to{" "}
+        <b className="text-green-400">✓ Commit found</b> with a link to it.
       </>
     ),
   },
@@ -897,17 +882,10 @@ const GUIDE_STEPS: GuideStep[] = [
     label: "6 · At close — AI verdict, money moves",
     body: (
       <>
-        The condition governor reads the repo&apos;s commit feed for a commit{" "}
-        <b>strictly inside the raise window</b> (open → close).
-        <br />
-        • <b>Commit inside the window</b> → verdict <b>success</b> → the vault{" "}
-        <b className="text-green-400">releases</b> the escrow to the team.
-        <br />
-        • <b>No commit</b> → verdict <b>failure</b> → the vault{" "}
-        <b className="text-red-400">refunds</b> every depositor.
-        <br />
-        Either way the poll keeps a <b>View settlement on-chain</b> link to the
-        explorer transaction, so anyone can verify the payout.
+        The AI checks the repo: commit found inside the window → escrow{" "}
+        <b className="text-green-400">releases to the team</b>; none →{" "}
+        <b className="text-red-400">everyone refunded</b>. The settlement tx link
+        makes it verifiable.
       </>
     ),
   },
@@ -956,14 +934,6 @@ function HowToDialog({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           ))}
-
-          <div className="rounded-lg border border-border/60 p-4 text-xs leading-relaxed text-muted-foreground">
-            Two things to remember: <b className="text-foreground">votes are off-chain</b>{" "}
-            (instant, free, one per wallet) and{" "}
-            <b className="text-foreground">money is always on-chain</b> — every round
-            escrows in the Vault contract on Studio Next and can only end one of two
-            ways: released to the team, or refunded to backers. Nothing in between.
-          </div>
 
           <button
             onClick={onClose}
