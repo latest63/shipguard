@@ -5,7 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { fetchRaises, parseRaised, formatTotal, type ShippingRaise } from "@/lib/raises";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { useDeposit } from "@/lib/hooks/useVault";
-import { Loader2, Coins, Gavel, ShieldCheck, Clock, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers, HelpCircle } from "lucide-react";
+import { Loader2, Coins, Gavel, ShieldCheck, Zap, Github, Globe, Twitter, Send, MessageCircle, ExternalLink, Layers, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCountdown, type CountdownParts } from "@/lib/useCountdown";
 import { success } from "@/lib/utils/toast";
@@ -112,36 +112,64 @@ export default function ExplorePage() {
 
       <main className="flex-grow pt-24 pb-20">
         <div className="shell">
-          {/* ── Header with Live badge ───────────────────────────────────── */}
-          <div className="mb-10">
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase">
-                  <Zap className="w-3 h-3" />
-                  Live
+        {/* ── Header: board masthead ──────────────────────────────────── */}
+        <div className="mb-6">
+          <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-3 mb-2 font-mono text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 font-semibold tracking-widest text-ok">
+                  <span className="live-dot" aria-hidden="true" />
+                  LIVE
                 </span>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                  Explore Raises
-                </h1>
+                <span>GEN · STUDIO NEXT · 61997</span>
               </div>
-              <button
-                onClick={() => setShowGuide(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 hover:border-primary/50 transition-colors shrink-0"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                How to
-              </button>
+              <h1 className="font-display text-[34px] md:text-[44px] uppercase leading-none tracking-tight">
+                Explore <span className="text-primary">Raises</span>
+              </h1>
             </div>
-            <p className="text-sm text-muted-foreground max-w-lg leading-relaxed">
-              Every raise is escrowed and stems from a project. Funds are locked
-              until the condition is verified by AI at the close date — the team
-              shows the verified project GitHub that backs each raise.
-            </p>
+            <button
+              onClick={() => setShowGuide(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-sm border border-border bg-card font-mono text-xs text-foreground hover:border-primary/50 hover:text-primary transition-colors shrink-0"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              How to
+            </button>
           </div>
+          <p className="text-sm text-muted-foreground max-w-xl leading-relaxed">
+            Every raise is escrowed and stems from a project. Funds are locked
+            until the condition is verified by AI at the close date — the team
+            shows the verified project GitHub that backs each raise.
+          </p>
+        </div>
 
-          {/* ── Filter tabs: All / Live / Ended ─────────────────────────── */}
-          <div className="flex gap-1.5 mb-6 bg-background border border-border rounded-lg p-1 w-fit">
-            {(["all", "live", "ended"] as const).map((f) => {
+        {/* ── Quiet metric line — four facts, no KPI cards ────────────── */}
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-[13px] text-muted-foreground mb-6 pb-6 border-b border-border">
+          <span>
+            <b className="text-foreground font-semibold">
+              {String(new Set(raises.map((r) => r.project_id || r.company)).size)}
+            </b>{" "}
+            projects raising
+          </span>
+          <span>
+            <b className="text-foreground font-semibold">{totalRaised}</b> GEN
+            escrowed on-chain
+          </span>
+          <span>
+            <b className="text-foreground font-semibold">
+              {String(raises.filter((r) => r.github_handle).length)}
+            </b>{" "}
+            verified repos
+          </span>
+          <span>
+            <b className="text-foreground font-semibold">{liveCount}</b> live
+            rounds{endedCount ? ` · ${endedCount} ended` : ""}
+          </span>
+        </div>
+
+        {/* ── Filter tabs: board switches ─────────────────────────────── */}
+        <div className="flex w-fit mb-8">
+          {([["all", "All"], ["live", "Live"], ["ended", "Ended"]] as const).map(
+            ([f, label]) => {
               const active = filter === f;
               const count =
                 f === "all" ? raises.length : f === "live" ? liveCount : endedCount;
@@ -149,48 +177,20 @@ export default function ExplorePage() {
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
+                  aria-pressed={active}
+                  className={`px-4 py-2 font-mono text-xs border border-border -ml-px first:ml-0 transition-colors ${
                     active
-                      ? "bg-primary/15 text-primary"
+                      ? "bg-primary text-primary-foreground font-semibold"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {f}
-                  <span className={`ml-1.5 text-xs tabular-nums ${active ? "text-primary/70" : "text-muted-foreground/60"}`}>
-                    {count}
-                  </span>
+                  {label}{" "}
+                  <span className="tabular-nums">{count}</span>
                 </button>
               );
-            })}
-          </div>
-
-          {/* ── Metrics row ──────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
-            <MetricCard
-              icon={Layers}
-              label="Projects raising"
-              value={String(new Set(raises.map((r) => r.project_id || r.company)).size)}
-              sub="across all rounds"
-            />
-            <MetricCard
-              icon={Coins}
-              label="GEN raised"
-              value={totalRaised}
-              sub="raised across all rounds"
-            />
-            <MetricCard
-              icon={ShieldCheck}
-              label="Verified"
-              value={String(raises.filter((r) => r.github_handle).length)}
-              sub="with verified project GitHub"
-            />
-            <MetricCard
-              icon={Gavel}
-              label="Live rounds"
-              value={String(liveCount)}
-              sub={endedCount ? `+${endedCount} ended` : "still funding"}
-            />
-          </div>
+            }
+          )}
+        </div>
 
           {/* ── Loading / List ───────────────────────────────────────────── */}
           {loading ? (
@@ -215,9 +215,9 @@ export default function ExplorePage() {
               </p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="border-t border-border">
               {visibleRaises.map((raise) => (
-                <RaiseCard
+                <RaiseRow
                   key={raise.id}
                   raise={raise}
                   poll={polls[raise.id]}
@@ -245,7 +245,8 @@ export default function ExplorePage() {
   );
 }
 
-/* ── Metric card ──────────────────────────────────────────────────────────── */
+/* ── Metric strip (detail dialog only — the board's four facts live
+      as one quiet line on the page itself) ─────────────────────────────── */
 
 function MetricCard({
   icon: Icon,
@@ -259,17 +260,17 @@ function MetricCard({
   sub: string;
 }) {
   return (
-    <div className="bg-background border border-border rounded-lg p-4 flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+    <div className="px-4 py-3 border border-border rounded-sm bg-card/50 min-w-0">
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
         <Icon className="w-3.5 h-3.5" />
-        <span className="text-[11px] font-medium uppercase tracking-wide">
+        <span className="font-mono text-xs uppercase tracking-wider truncate">
           {label}
         </span>
       </div>
-      <span className="text-xl font-bold tabular-nums tracking-tight text-foreground">
+      <span className="font-mono text-lg font-bold tabular-nums tracking-tight text-foreground">
         {value}
       </span>
-      <span className="text-[11px] text-muted-foreground/70 leading-tight">
+      <span className="block text-xs text-muted-foreground leading-tight mt-0.5">
         {sub}
       </span>
     </div>
@@ -287,9 +288,9 @@ function initialsBadge(initials: string, tint: string, size = 10) {
   )}`;
 }
 
-/* ── Raise card ───────────────────────────────────────────────────────────── */
+/* ── Round row — a departure on the board ──────────────────────────────── */
 
-function RaiseCard({
+function RaiseRow({
   raise,
   poll,
   onOpen,
@@ -301,93 +302,165 @@ function RaiseCard({
   const [imgError, setImgError] = useState(false);
   const countdown = useCountdown(raise.closes_on);
   const verified = Boolean(raise.github_handle);
+  const live = !countdown.ended;
+  const decided = poll?.state === "decided_commit" || poll?.state === "decided_no_commit";
+  const yes = poll?.yes ?? 0;
+  const no = poll?.no ?? 0;
+  const total = yes + no;
+  const shortCode = raise.id.split("-").slice(-2).join("-").toUpperCase();
+  // The decision window: last 30 minutes turn the clock to the signal colour.
+  const urgent = live && countdown.total < 30 * 60 * 1000;
   const logo = raise.logo_url && !imgError ? (
     <img
       src={raise.logo_url}
       alt={`${raise.company} logo`}
-      className="w-9 h-9 object-contain rounded-md"
+      width={32}
+      height={32}
+      className="w-8 h-8 object-contain rounded-sm"
       onError={() => setImgError(true)}
     />
-  ) : null;
+  ) : (
+    <img
+      src={initialsBadge(raise.initials || "RG", raise.tint || "#7c5cff")}
+      alt=""
+      width={32}
+      height={32}
+      className="w-8 h-8 object-contain rounded-sm"
+      draggable={false}
+    />
+  );
 
   return (
     <button
       onClick={onOpen}
-      className="text-left bg-background border border-border rounded-lg p-3.5 hover:border-primary/40 hover:bg-white/[0.02] transition-all duration-150 flex flex-col gap-2.5 cursor-pointer group min-w-0 overflow-hidden"
+      className="w-full text-left border-b border-border hover:bg-white/[0.02] transition-colors duration-150 cursor-pointer group min-w-0"
     >
-      {/* Header: logo + name + verified */}
-      <div className="flex items-start gap-2.5 min-w-0">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 overflow-hidden shrink-0">
-          {logo ?? (
-            <img src={initialsBadge(raise.initials || "RG", raise.tint || "#7c5cff")} alt="" className="w-8 h-8 object-contain rounded-md" draggable={false} />
-          )}
+      <div className="grid grid-cols-1 lg:grid-cols-[168px_1fr_200px_220px] items-stretch">
+        {/* Gate: status + round code */}
+        <div className="flex lg:flex-col items-center lg:items-start gap-3 md:gap-1.5 px-4 py-4 lg:py-5 lg:border-r border-border font-mono text-xs">
+          <span
+            className={`inline-flex items-center gap-1.5 font-semibold tracking-widest ${
+              live ? "text-ok" : "text-muted-foreground"
+            }`}
+          >
+            {live ? (
+              <span className="live-dot" aria-hidden="true" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
+            )}
+            {live ? "LIVE" : "CLOSED"}
+          </span>
+          <span className="text-foreground font-semibold">
+            {shortCode}
+          </span>
+          <span className="hidden lg:block text-muted-foreground">
+            decision T−30 min
+          </span>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <h3 className="text-sm font-bold tracking-tight truncate">{raise.company}</h3>
+
+        {/* Manifest: who and what */}
+        <div className="px-4 py-4 lg:py-5 min-w-0 lg:border-r border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center justify-center w-8 h-8 rounded-sm bg-secondary border border-border overflow-hidden shrink-0">
+              {logo}
+            </span>
+            <h3 className="font-display text-lg lg:text-xl uppercase tracking-tight truncate">
+              {raise.company}
+            </h3>
             {verified && (
               <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-semibold border border-primary/20 shrink-0"
+                className="inline-flex items-center gap-1 font-mono text-xs text-ok shrink-0"
                 title="Verified project GitHub"
               >
-                <ShieldCheck className="w-2.5 h-2.5" /> Verified
+                <ShieldCheck className="w-3.5 h-3.5" /> verified
               </span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 mt-0.5 break-words">
+          <p className="text-sm text-muted-foreground leading-snug mt-1.5 line-clamp-2">
             {raise.tagline || "Escrowed AI-verified raise"}
           </p>
-        </div>
-      </div>
-
-      {/* Countdown */}
-      <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
-        <div className="flex items-center gap-1.5 text-sm">
-          <Clock className="w-3.5 h-3.5 text-primary" />
-          <span className="text-muted-foreground text-[10px]">Closes</span>
-        </div>
-        <CountdownDisplay parts={countdown} compact />
-      </div>
-
-      {/* Poll status — the commit-found indicator */}
-      {poll && (
-        <div
-          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[10px] font-semibold ${
-            poll.state === "decided_commit"
-              ? "border-green-500/30 bg-green-500/10 text-green-400"
-              : poll.state === "decided_no_commit"
-              ? "border-red-500/30 bg-red-500/10 text-red-400"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
-          }`}
-        >
-          {poll.state === "decided_commit" ? (
-            <>✓ Commit found{poll.commit_sha ? ` · ${poll.commit_sha.slice(0, 7)}` : ""} — releases to team</>
-          ) : poll.state === "decided_no_commit" ? (
-            <>✗ No commit — backers refunded</>
-          ) : (
-            <>Poll open · {poll.yes}–{poll.no} · commit leading at close</>
-          )}
-        </div>
-      )}
-
-      {/* Footer: raised + repo + click hint */}
-      <div className="flex items-center justify-between gap-2 min-w-0">
-        <div className="flex items-baseline gap-1 shrink-0">
-          <span className="text-sm font-bold tabular-nums tracking-tight">{raise.raised}</span>
-          <span className="text-[9px] text-muted-foreground">GEN</span>
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          {raise.repo_url && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground min-w-0">
-              <Github className="w-3 h-3 shrink-0" />
-              <span className="truncate max-w-[100px]">
-                {raise.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+          <div className="flex items-center gap-3 mt-2 font-mono text-xs text-muted-foreground min-w-0">
+            {raise.repo_url && (
+              <span className="inline-flex items-center gap-1 min-w-0">
+                <Github className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate max-w-[220px]">
+                  {raise.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+                </span>
               </span>
+            )}
+            <span className="hidden lg:inline">
+              {decided
+                ? poll.state === "decided_commit"
+                  ? "✓ commit found — releases to team"
+                  : "✗ no commit — backers refunded"
+                : total > 0
+                ? `poll ${yes}–${no}`
+                : "poll open · no votes yet"}
+            </span>
+          </div>
+        </div>
+
+        {/* Clock: the departure time */}
+        <div className="px-4 py-3 lg:py-5 lg:border-r border-border flex lg:flex-col items-center lg:items-start justify-between gap-2">
+          <span className="font-mono text-xs text-muted-foreground">
+            {live ? "Closes in" : "Closed"}
+          </span>
+          {live ? (
+            <span
+              className={`font-mono font-bold tabular-nums text-2xl lg:text-[26px] leading-none ${
+                urgent ? "text-primary" : "text-foreground"
+              }`}
+            >
+              {countdown.days > 0 ? `${countdown.days}d ` : ""}
+              {String(countdown.hours).padStart(2, "0")}:
+              {String(countdown.minutes).padStart(2, "0")}:
+              {String(countdown.seconds).padStart(2, "0")}
+            </span>
+          ) : (
+            <span className="font-mono font-bold text-2xl lg:text-[26px] leading-none text-muted-foreground">
+              —
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-[10px] text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            Details <ExternalLink className="w-3 h-3" />
+          <span className="font-mono text-xs text-muted-foreground">
+            {new Date(raise.closes_on).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </span>
+        </div>
+
+        {/* Load: escrow figure + poll tally instrument */}
+        <div className="px-4 py-4 lg:py-5 bg-card lg:bg-transparent flex flex-col justify-center gap-2 border-t lg:border-t-0 border-border">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-mono font-bold tabular-nums text-xl text-foreground">
+              {raise.raised}
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">GEN escrowed</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden bg-border flex" aria-hidden="true">
+            <div
+              className="bg-primary transition-all duration-500"
+              style={{ width: total ? `${Math.round((yes / total) * 100)}%` : "0%" }}
+            />
+          </div>
+          <div className="font-mono text-xs text-muted-foreground">
+            {decided ? (
+              poll.state === "decided_commit" ? (
+                <span className="text-ok font-semibold">released · settlement on-chain</span>
+              ) : (
+                <span className="text-destructive font-semibold">refunded to backers</span>
+              )
+            ) : total > 0 ? (
+              <>
+                <span className="text-foreground font-semibold">YES {yes}</span> · NO {no} ·{" "}
+                {total} vote{total === 1 ? "" : "s"}
+              </>
+            ) : (
+              "no votes yet"
+            )}
+          </div>
         </div>
       </div>
     </button>
@@ -425,9 +498,9 @@ export function CountdownDisplay({
               {String(c.v).padStart(2, "0")}
             </span>
           </div>
-          {!compact && <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{c.l}</span>}
+          {!compact && <span className="text-xs text-muted-foreground uppercase tracking-wide">{c.l}</span>}
           {i < cells.length - 1 && (
-            <span className={`text-muted-foreground/40 font-bold ${compact ? "text-[9px]" : ""}`}>:</span>
+            <span className={`text-muted-foreground/40 font-bold ${compact ? "text-xs" : ""}`}>:</span>
           )}
         </div>
       ))}
@@ -489,11 +562,11 @@ function PollWidget({
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-4">
       <div className="flex items-center justify-between gap-2 mb-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Community poll — should the team commit before close?
         </p>
         <span
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+          className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
             state === "decided_commit"
               ? "border-green-500/30 bg-green-500/10 text-green-400"
               : state === "decided_no_commit"
@@ -513,7 +586,7 @@ function PollWidget({
       <div className="h-2 rounded-full overflow-hidden bg-red-500/20 flex mb-1.5">
         <div className="bg-green-500 transition-all duration-500" style={{ width: `${total ? pct : 0}%` }} />
       </div>
-      <div className="flex items-center justify-between text-[11px] mb-3">
+      <div className="flex items-center justify-between text-xs mb-3">
         <span className="text-green-400 font-semibold">Commit {yes}</span>
         <span className="text-muted-foreground">{total} vote{total === 1 ? "" : "s"}</span>
         <span className="text-red-400 font-semibold">{no} No commit</span>
@@ -538,15 +611,15 @@ function PollWidget({
             </button>
           </div>
           {!address && (
-            <p className="text-[10px] text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               Connect your wallet to vote (no transaction needed).
             </p>
           )}
-          {err && <p className="text-[10px] text-red-400 mt-2">{err}</p>}
+          {err && <p className="text-xs text-red-400 mt-2">{err}</p>}
         </>
       ) : (
         <div className="space-y-2">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {state === "decided_commit"
               ? `Decided: commit ${cleanReason}${commitSha ? ` (${commitSha.slice(0, 7)})` : ""} — the AI condition checks the repo at close.`
               : state === "decided_no_commit"
@@ -558,7 +631,7 @@ function PollWidget({
               href={commitUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-green-400 hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-400 hover:underline"
             >
               <Github className="w-3.5 h-3.5" />
               View commit {commitSha.slice(0, 7)} on GitHub
@@ -570,7 +643,7 @@ function PollWidget({
               href={`https://explorer-studio-dev.genlayer.com/tx/${settleTx}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
             >
               <Layers className="w-3.5 h-3.5" />
               View settlement on-chain {settleTx.slice(0, 10)}…
@@ -684,7 +757,7 @@ function RaiseDetailDialog({
               <div className="flex items-center gap-2 min-w-0">
                 <h2 className="text-xl font-bold tracking-tight truncate">{raise.company}</h2>
                 {verified && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-semibold border border-primary/20 shrink-0">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold border border-primary/20 shrink-0">
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate max-w-[160px]">
                       Verified GitHub{raise.github_handle ? ` @${raise.github_handle}` : ""}
@@ -703,7 +776,7 @@ function RaiseDetailDialog({
 
           {/* Bigger countdown */}
           <div className="mt-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            <p className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
               {countdown.ended ? "Raise has ended" : "Time remaining"}
             </p>
             <CountdownDisplay parts={countdown} />
@@ -725,7 +798,7 @@ function RaiseDetailDialog({
         {/* Raise-specific details */}
         <div className="p-6 space-y-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            <p className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
               Deliverable condition
             </p>
             <p className="text-sm leading-relaxed bg-muted/40 border border-border rounded-lg p-3 break-words">
@@ -734,7 +807,7 @@ function RaiseDetailDialog({
           </div>
 
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+            <p className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
               Close date
             </p>
             <p className="text-sm">
@@ -747,7 +820,7 @@ function RaiseDetailDialog({
           {/* Socials & links */}
           {socials.length > 0 && (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              <p className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
                 Project links
               </p>
               <div className="flex flex-wrap gap-2">
@@ -903,7 +976,7 @@ function HowToDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="p-6 pb-4 border-b border-border/60 flex items-start justify-between gap-4">
           <div>
-            <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-semibold tracking-wide uppercase mb-2">
+            <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-xs font-semibold tracking-wide uppercase mb-2">
               <HelpCircle className="w-3 h-3" />
               Demo walkthrough
             </p>
@@ -926,7 +999,7 @@ function HowToDialog({ onClose }: { onClose: () => void }) {
               key={step.label}
               className="rounded-lg border border-border bg-muted/30 p-4"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1.5">
+              <p className="font-mono text-xs font-semibold uppercase tracking-widest text-primary mb-1.5">
                 {step.label}
               </p>
               <div className="text-sm leading-relaxed text-foreground/90">

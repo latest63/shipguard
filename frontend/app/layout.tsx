@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono, Inter } from "next/font/google";
+import { JetBrains_Mono, Inter, Roboto_Condensed } from "next/font/google";
 import "@genlayer/transaction-kit-react/styles.css";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -21,6 +21,16 @@ const inter = Inter({
   subsets: ["latin"],
   weight: "variable",
   variable: "--font-inter",
+  display: "swap",
+});
+
+// Departure-board display face: condensed grotesk for headings and round
+// titles (see design/DIRECTION.md — "berth board"). Falls back metric-close
+// to Arial Narrow / Liberation Sans Narrow where the webfont misses.
+const robotoCondensed = Roboto_Condensed({
+  subsets: ["latin"],
+  weight: "variable",
+  variable: "--font-roboto-condensed",
   display: "swap",
 });
 
@@ -69,7 +79,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${jetbrainsMono.variable} ${inter.variable}`}>
+      <body className={`${jetbrainsMono.variable} ${inter.variable} ${robotoCondensed.variable}`}>
         <Providers>
           {children}
         </Providers>

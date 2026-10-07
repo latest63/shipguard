@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShipGuard · Escrow statement</title>
+<meta name="color-scheme" content="light">
+<style>
+  :root{
+    --paper:#f7f4ec; --ink:#1c1a15; --dim:#5f5a4d; --rule:#d8d2c2;
+    --ox:#8f2f22; --seal:#8f2f22; --hold:#3d5a3a;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman","Liberation Serif",serif;
+    --mono:"SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:var(--paper);color:var(--ink);font-family:var(--serif);-webkit-font-smoothing:antialiased}
+  body{max-width:980px;margin:0 auto;padding:0 24px 80px}
+  a{color:var(--ox)}
+  :focus-visible{outline:2px solid var(--ox);outline-offset:2px}
+
+  header{display:flex;justify-content:space-between;align-items:baseline;padding:30px 0 12px;border-bottom:3px double var(--ink)}
+  .mark{font-family:var(--serif);font-variant:small-caps;letter-spacing:.08em;font-size:24px;font-weight:700}
+  .doc-no{font-family:var(--mono);font-size:12px;color:var(--dim)}
+
+  .title-block{padding:34px 0 6px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end;flex-wrap:wrap}
+  h1{font-size:42px;line-height:1.06;font-weight:700;letter-spacing:-.01em}
+  h1 em{font-style:italic;color:var(--ox)}
+  .stamp{border:2px solid var(--seal);color:var(--seal);font-family:var(--mono);font-size:12px;letter-spacing:.18em;
+    padding:8px 14px;transform:rotate(-4deg);text-transform:uppercase;opacity:.92;
+    animation:stamp .5s cubic-bezier(.2,1.4,.4,1) .3s both}
+  @keyframes stamp{0%{transform:rotate(-4deg) scale(1.6);opacity:0}100%{transform:rotate(-4deg) scale(1);opacity:.92}}
+  .lede{font-size:17px;line-height:1.6;color:var(--dim);max-width:62ch;padding:10px 0 6px}
+
+  .balance{display:flex;gap:36px;padding:20px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-top:20px;flex-wrap:wrap}
+  .balance div{min-width:150px}
+  .balance dt{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .balance dd{font-family:var(--mono);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:6px}
+  .balance dd small{font-size:13px;color:var(--dim);font-weight:400}
+  .balance .held dd{color:var(--hold)}
+
+  /* statement rows: ruled ledger, not cards */
+  .ledger{margin-top:34px;border-top:2px solid var(--ink)}
+  .entry{border-bottom:1px solid var(--rule);padding:22px 0;display:grid;grid-template-columns:78px 1fr 250px;gap:22px;align-items:start}
+  .ref{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.7}
+  .ref b{display:block;color:var(--ink);font-size:13px}
+  .who h2{font-size:25px;letter-spacing:-.01em}
+  .who .tag{font-style:italic;color:var(--dim);margin-top:4px;font-size:15px}
+  .who p{font-size:14.5px;line-height:1.6;color:var(--dim);margin-top:9px;max-width:56ch}
+  .who .links{margin-top:10px;font-family:var(--mono);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+  .who .ver{color:var(--hold);font-weight:700}
+
+  .terms{text-align:right;font-family:var(--mono)}
+  .terms .due{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .terms .cd{font-size:27px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .terms .cd.soon{color:var(--ox)}
+  .terms .when{font-size:11.5px;color:var(--dim);margin-top:2px}
+  .terms .sum{margin-top:12px;padding-top:10px;border-top:1px dashed var(--rule);font-size:15px;font-weight:700}
+  .terms .sum small{font-weight:400;color:var(--dim);font-size:12px}
+  .bar{height:5px;background:#e8e3d5;margin-top:8px;position:relative;overflow:hidden}
+  .bar i{position:absolute;inset:0 auto 0 0;background:var(--ox);width:0;animation:fill 1s cubic-bezier(.2,.8,.2,1) .2s forwards}
+  @keyframes fill{to{width:var(--w,40%)}}
+  .vote{margin-top:9px;font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+  .vote b{color:var(--hold)}
+
+  .closed{grid-column:2/-1;margin-top:8px;background:#eef1e9;border:1px solid var(--hold);color:#243522;
+    font-family:var(--mono);font-size:12.5px;padding:10px 12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .closed a{color:var(--hold)}
+
+  .actions{display:flex;gap:14px;padding-top:30px;flex-wrap:wrap;align-items:center}
+  .btn{font-family:var(--mono);font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+    padding:14px 24px;background:var(--ink);color:var(--paper);border:1px solid var(--ink);cursor:pointer;text-decoration:none}
+  .btn.line{background:transparent;color:var(--ink)}
+  .btn.line:hover{border-color:var(--ox);color:var(--ox)}
+  .foot{margin-top:44px;padding-top:14px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:820px){
+    h1{font-size:31px}
+    .entry{grid-template-columns:1fr;gap:10px}
+    .terms{text-align:left}
+    .closed{grid-column:1/-1}
+    .balance{gap:22px}
+    .balance dd{font-size:24px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}.bar i{width:var(--w,40%)!important}.stamp{opacity:.92}}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">ShipGuard Escrow Office</div>
+  <div class="doc-no">STATEMENT · STUDIO NEXT 61997 · 08 OCT 2026</div>
+</header>
+
+<div class="title-block">
+  <h1>Rounds in <em>escrow</em>,<br>backed by evidence.</h1>
+  <div class="stamp">Funds held</div>
+</div>
+<p class="lede">Every round below holds real GEN inside the Vault contract. At close it resolves one of two ways: released to the team against a verified commit, or refunded to backers. This page reads the chain directly.</p>
+
+<dl class="balance">
+  <div class="held"><dt>Currently held</dt><dd>1.01 <small>GEN</small></dd></div>
+  <div><dt>Open rounds</dt><dd>3</dd></div>
+  <div><dt>Verified repos</dt><dd>3</dd></div>
+  <div><dt>Refunded, all time</dt><dd>22</dd></div>
+</dl>
+
+<section class="ledger" aria-label="Escrow rounds">
+  <article class="entry">
+    <div class="ref"><b>REF 01</b>NOVA-01<br>opened 18:56</div>
+    <div class="who">
+      <h2>Nova Freight</h2>
+      <div class="tag">On-chain logistics for West Africa</div>
+      <p>Backers escrow now; the team is paid at close only if GenLayer validators confirm the milestone commit landed from the verified repository.</p>
+      <div class="links"><span class="ver">✓ repository verified</span><a href="#">github.com/latest63/shipguard</a></div>
+    </div>
+    <div class="terms">
+      <div class="due">Closes in</div>
+      <div class="cd soon" data-left="11776">03:16:16</div>
+      <div class="when">23:56 UTC · decision 23:26</div>
+      <div class="sum">1.01 GEN held</div>
+      <div class="bar" style="--w:64%"><i></i></div>
+      <div class="vote">poll · <b>4 yes</b> · 1 no · 5 total</div>
+    </div>
+  </article>
+
+  <article class="entry">
+    <div class="ref"><b>REF 02</b>KOLA-02<br>opened 19:57</div>
+    <div class="who">
+      <h2>Kola Labs</h2>
+      <div class="tag">Open-source payments toolkit</div>
+      <p>Votes are off-chain: instant, free, one per wallet. The escrow balance only changes when GEN moves into the Vault.</p>
+      <div class="links"><span class="ver">✓ repository verified</span><a href="#">github.com/latest63/shipguard</a></div>
+    </div>
+    <div class="terms">
+      <div class="due">Closes in</div>
+      <div class="cd soon" data-left="15436">04:17:16</div>
+      <div class="when">00:57 UTC · decision 00:27</div>
+      <div class="sum">0.00 GEN held</div>
+      <div class="bar" style="--w:6%"><i></i></div>
+      <div class="vote">poll · no votes yet</div>
+    </div>
+  </article>
+
+  <article class="entry">
+    <div class="ref"><b>REF 03</b>ATLS-03<br>opened 20:58</div>
+    <div class="who">
+      <h2>Atlas Grid</h2>
+      <div class="tag">Community solar monitoring</div>
+      <p>If no commit arrives before close, the round ends here and every deposit returns to the wallet it came from.</p>
+      <div class="links"><span class="ver">✓ repository verified</span><a href="#">github.com/latest63/shipguard</a></div>
+    </div>
+    <div class="terms">
+      <div class="due">Closes in</div>
+      <div class="cd soon" data-left="19096">05:18:16</div>
+      <div class="when">01:58 UTC · decision 01:28</div>
+      <div class="sum">0.00 GEN held</div>
+      <div class="bar" style="--w:6%"><i></i></div>
+      <div class="vote">poll · no votes yet</div>
+    </div>
+    <div class="closed">SETTLED: released to team · commit <a href="#">7017b69</a> · tx <a href="#">0x8e6b6ab9…</a></div>
+  </article>
+</section>
+
+<div class="actions">
+  <a class="btn" href="#">Back a live round</a>
+  <a class="btn line" href="#">How it works</a>
+</div>
+
+<div class="foot"><span>ShipGuard · escrow for AI-verified raises</span><span>Vault 0x17F1…5356C</span></div>
+
+<script>
+  document.querySelectorAll('.cd').forEach(el=>{let s=+el.dataset.left;
+    setInterval(()=>{s=s>0?s-1:0;
+      const p=n=>String(n).padStart(2,'0');
+      el.textContent=p(Math.floor(s/3600))+':'+p(Math.floor(s%3600/60))+':'+p(s%60);
+    },1000);});
+</script>
+</body>
+</html>

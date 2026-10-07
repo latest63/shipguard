@@ -17,7 +17,7 @@ const STEPS = [
   {
     icon: ShieldCheck,
     label: "Backers deposit",
-    body: "Investors contribute GEN to the raise. Funds are held in escrow — the team cannot access them until the condition passes verification.",
+    body: "Investors contribute GEN to the raise. Funds are held in escrow: the team cannot access them until the condition passes verification.",
   },
   {
     icon: Gavel,
@@ -43,7 +43,7 @@ const ROADMAP = [
   {
     status: "Shipped",
     title: "AI-verified settlement",
-    body: "GenLayer validators read the evidence URL and settle to one of two outcomes — release funds to the team, or refund every backer.",
+    body: "GenLayer validators read the evidence URL and settle to one of two outcomes: release funds to the team, or refund every backer.",
   },
   {
     status: "Shipped",
@@ -93,7 +93,7 @@ export default function HomePage() {
           <div className="max-w-3xl">
             <p className="eyebrow mb-4">AI-verified fundraising on GenLayer</p>
 
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight mb-5">
+            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl uppercase leading-[1.05] tracking-tight mb-5">
               Capital that only
               <br />
               moves when the{" "}
@@ -101,7 +101,7 @@ export default function HomePage() {
             </h1>
 
             <p className="text-base md:text-lg text-muted-foreground leading-relaxed max-w-xl mb-8">
-              Deploy an escrowed raise with a condition and close date. Investors lock GEN. AI validates at deadline. Pass = release funds. Fail = auto-refund.
+              Deploy an escrowed raise with a condition and close date. Investors lock GEN. AI validates at deadline. Pass means release funds. Fail means auto-refund.
             </p>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-12">
@@ -136,13 +136,13 @@ export default function HomePage() {
                       isStep4 ? "step-highlight" : ""
                     }`}
                   >
-                    <div className="eyebrow mb-2">
-                      Step {String(i + 1).padStart(2, "0")}
+                    <div className="font-mono text-xs font-semibold text-primary mb-2 tabular-nums">
+                      {String(i + 1).padStart(2, "0")}
                     </div>
                     <div className="text-sm font-semibold mb-0.5">
                       {step.label}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[13px] text-muted-foreground">
                       {step.detail}
                     </div>
                   </div>
@@ -169,7 +169,6 @@ export default function HomePage() {
         {/* ── How it works ─────────────────────────────────── */}
         <section className="border-t border-border">
           <div className="shell section">
-            <p className="eyebrow mb-3">How it works</p>
             <h2 className="text-2xl md:text-3xl font-bold mb-10 max-w-2xl">
               Three stages, one escrow, two automated outcomes.
             </h2>
@@ -183,11 +182,8 @@ export default function HomePage() {
                     className="bg-background p-6 md:p-8"
                   >
                     <div className="flex items-center gap-3 mb-4">
-                      <span className="text-muted-foreground">
+                      <span className="text-primary">
                         <Icon className="w-5 h-5" />
-                      </span>
-                      <span className="eyebrow text-muted-foreground step-index">
-                        {step.label.split(" ")[0]}
                       </span>
                     </div>
                     <h3 className="text-base font-semibold mb-2">
@@ -206,7 +202,6 @@ export default function HomePage() {
         {/* ── Roadmap ─────────────────────────────────────── */}
         <section className="border-t border-border">
           <div className="shell section">
-            <p className="eyebrow mb-3">Roadmap</p>
             <h2 className="text-2xl md:text-3xl font-bold mb-10 max-w-2xl">
               ShipGuard's development milestones.
             </h2>
@@ -223,7 +218,7 @@ export default function HomePage() {
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                      className={`font-mono text-xs font-semibold px-2 py-0.5 rounded ${
                         item.status === "Shipped"
                           ? "bg-primary text-background"
                           : "bg-border text-muted-foreground"
@@ -235,7 +230,7 @@ export default function HomePage() {
                       {item.title}
                     </h3>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[13px] text-muted-foreground">
                     {item.body}
                   </p>
                 </div>
@@ -249,10 +244,10 @@ export default function HomePage() {
       <footer className="border-t border-border">
         <div className="shell py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-muted-foreground">
-              ShipGuard — AI-verified escrow for teams that ship.
+            <p className="text-[13px] text-muted-foreground">
+              ShipGuard: AI-verified escrow for teams that ship.
             </p>
-            <nav className="flex items-center gap-5 text-xs text-muted-foreground">
+            <nav className="flex items-center gap-5 text-[13px] text-muted-foreground">
               <a
                 href="https://genlayer.com"
                 target="_blank"

@@ -14,32 +14,35 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* GenLayer Brand Colors 2025 */
+/* GenLayer Brand Colors 2025 — restyled to the ShipGuard berth-board
+   system (design/DIRECTION.md): ink-green ground, hairline structure,
+   lemon as the single signal accent. */
 :root {
-  --font-body: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-  --font-display: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-roboto-condensed), 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto Condensed', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 
-  /* Lemon theme: pure black base, lime accent (ported from the EFG design system) */
-  --background: #000000;
-  --foreground: #ffffff;
+  /* Ground: ink-green black, not zinc/pure black */
+  --background: #0d1110;
+  --foreground: #eef2ee;
 
-  /* Cards / popovers */
-  --card: #0a0a0a;
-  --card-foreground: #ffffff;
-  --popover: #0a0a0a;
-  --popover-foreground: #ffffff;
+  /* Cards / popovers — the manifest panel */
+  --card: #121715;
+  --card-foreground: #eef2ee;
+  --popover: #121715;
+  --popover-foreground: #eef2ee;
 
-  /* Primary: lemon lime */
+  /* Signal: lemon lime — the ONE accent (live state, active tab, CTA) */
   --primary: #d4ff00;
   --primary-foreground: #000000;
 
   /* Secondary: dark surface */
-  --secondary: #111111;
-  --secondary-foreground: #ffffff;
+  --secondary: #1b221e;
+  --secondary-foreground: #eef2ee;
 
-  /* Muted states */
-  --muted: #111111;
-  --muted-foreground: #888888;
+  /* Muted states — dim ink, AA at 13px+ on ground */
+  --muted: #121715;
+  --muted-foreground: #9aa69e;
 
   /* Accent: lemon lime */
   --accent: #d4ff00;
@@ -56,10 +59,13 @@
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
-  /* Borders and inputs */
-  --border: #1a1a1a;
-  --input: #111111;
+  /* Borders and inputs — hairlines */
+  --border: #232b27;
+  --input: #232b27;
   --ring: #d4ff00;
+
+  /* Status: go/success (LIVE dot, verified, released) */
+  --ok: #5fd08a;
 
   /* Chart colors */
   --chart-1: #d4ff00;
@@ -83,25 +89,26 @@
 
 /* Dark theme (same as root for this project - already dark) */
 .dark {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #0a0a0a;
-  --card-foreground: #ffffff;
-  --popover: #0a0a0a;
-  --popover-foreground: #ffffff;
+  --background: #0d1110;
+  --foreground: #eef2ee;
+  --card: #121715;
+  --card-foreground: #eef2ee;
+  --popover: #121715;
+  --popover-foreground: #eef2ee;
   --primary: #d4ff00;
   --primary-foreground: #000000;
-  --secondary: #111111;
-  --secondary-foreground: #ffffff;
-  --muted: #111111;
-  --muted-foreground: #888888;
+  --secondary: #1b221e;
+  --secondary-foreground: #eef2ee;
+  --muted: #121715;
+  --muted-foreground: #9aa69e;
   --accent: #d4ff00;
   --accent-foreground: #000000;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #1a1a1a;
-  --input: #111111;
+  --border: #232b27;
+  --input: #232b27;
   --ring: #d4ff00;
+  --ok: #5fd08a;
   --chart-1: #d4ff00;
   --chart-2: #c8f000;
   --chart-3: #eab308;
@@ -154,6 +161,10 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-display: var(--font-roboto-condensed), 'Arial Narrow', 'Liberation Sans Narrow', sans-serif;
 }
 
 @layer base {
@@ -167,10 +178,17 @@
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
+  /* Departure-board display: condensed grotesk for headings and round
+     titles; every number elsewhere is mono + tabular (see DIRECTION.md). */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display), var(--font-body), sans-serif;
-    font-weight: 600;
-    letter-spacing: 0;
+    font-family: var(--font-display), var(--font-sans), sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+  }
+
+  /* Numbers, clocks, hashes and labels speak mono with tabular figures. */
+  .tabular-nums, code, kbd, samp {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -220,8 +238,8 @@
 
   /* Clean Card Styles (lemon flat surfaces) */
   .brand-card {
-    background: #0a0a0a;
-    border: 1px solid #1a1a1a;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 0.25rem;
     box-shadow: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -237,8 +255,8 @@
      defined, so those panels rendered with no surface at all. Aliased to
      the lemon card so both call sites pick up the theme. */
   .glass-card {
-    background: #0a0a0a;
-    border: 1px solid #1a1a1a;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 0.25rem;
     box-shadow: none;
   }
@@ -273,30 +291,31 @@
     padding-block: 1.5rem;
   }
 
-  /* Eyebrow label — the small uppercase mono tag above section headings */
+  /* Eyebrow label — restrained: 12px, used sparingly (DIRECTION lose-list
+     bans an eyebrow over every section). */
   .eyebrow {
-    font-family: var(--font-display);
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--muted-foreground);
   }
 
   /* Stat block used in the hero strip */
   .stat-block {
-    background: #0a0a0a;
-    border: 1px solid #1a1a1a;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 0.25rem;
     padding: 1rem 1.25rem;
   }
 
   /* Clean Navbar */
   .brand-navbar {
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(13, 17, 16, 0.85);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid #1a1a1a;
+    border-bottom: 1px solid var(--border);
   }
 
   /* Brand Button Styles - Primary (lemon) */
@@ -325,7 +344,7 @@
   .btn-secondary {
     padding: 0.5rem 1rem;
     border-radius: 0.25rem;
-    background: #111111;
+    background: var(--secondary);
     color: #ffffff;
     font-weight: 600;
     border: 1px solid #1a1a1a;
@@ -395,28 +414,15 @@
   }
 }
 
-/* Lemon theme background — black with a faint lime bloom at the top */
-@keyframes brandGradientShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
+/* (brandGradientShift removed: the ground is flat now.) */
 
 html {
   min-height: 100vh !important;
   height: 100%;
   scroll-behavior: smooth;
-  background-color: #000000 !important;
-  background-image:
-    radial-gradient(ellipse 60% 30% at 50% 0%, rgba(212, 255, 0, 0.05) 0%, transparent 70%),
-    linear-gradient(180deg, #000000 0%, #000000 100%);
-  background-attachment: fixed !important;
-  background-size: 200% 200% !important;
-  background-repeat: no-repeat !important;
-  animation: brandGradientShift 20s ease infinite;
+  /* Flat ink-green ground: no animated gradient (lemon text over a lemon
+     glow failed contrast at 1.16:1, and light comes from the scene). */
+  background-color: var(--background) !important;
   overscroll-behavior: none;
 }
 
@@ -626,9 +632,6 @@ wui-list-item[data-icon="onramp"] {
 .raise-card:hover {
   border-color: color-mix(in oklab, var(--primary) 55%, transparent);
   transform: translateY(-3px);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--primary) 22%, transparent),
-    0 12px 32px -12px color-mix(in oklab, var(--primary) 30%, transparent);
 }
 
 /* The company mark: a small brand-tinted tile. */
@@ -672,17 +675,33 @@ wui-list-item[data-icon="onramp"] {
   height: 100%;
   background: var(--primary);
   border-radius: 999px;
-  box-shadow: 0 0 8px color-mix(in oklab, var(--primary) 55%, transparent);
 }
 
-/* ── Highlighted step (lemon glow) ─────────────────────────────────── */
+/* ── Highlighted step — flat signal border, no glow (light comes from
+      a scene, not from boxes; see design/DIRECTION.md lose-list) ───── */
 
 .step-highlight {
   border-color: color-mix(in oklab, var(--primary) 60%, transparent) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--primary) 28%, transparent),
-    0 0 24px -4px color-mix(in oklab, var(--primary) 38%, transparent),
-    inset 0 0 28px -18px color-mix(in oklab, var(--primary) 70%, transparent);
+  box-shadow: none;
+}
+
+/* ── Signature: the LIVE dot blinks on the board ───────────────────── */
+
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ok);
+  animation: live-blink 1.6s steps(2, start) infinite;
+}
+
+@keyframes live-blink {
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
 }
 
 .step-highlight .step-index {

@@ -26,3 +26,4 @@ package-lock.json
 *.tsbuildinfo
 .vercel
 .env*
+design/shots/

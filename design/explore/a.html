@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShipGuard · Berth board</title>
+<meta name="color-scheme" content="dark">
+<style>
+  :root{
+    --ground:#0d1110; --panel:#121715; --ink:#eef2ee; --dim:#9aa69e;
+    --hair:#232b27; --amber:#ffb000; --amber-ink:#0d1110; --green:#5fd08a;
+    --mono:"SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --sans:"Helvetica Neue",Arial,"Liberation Sans",sans-serif;
+    --cond:"Arial Narrow","Liberation Sans Narrow","Roboto Condensed",var(--sans);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{background:var(--ground);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{max-width:1160px;margin:0 auto;padding:0 20px 72px}
+  a{color:inherit}
+  :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  header.top{display:flex;align-items:baseline;justify-content:space-between;padding:22px 0 14px;border-bottom:1px solid var(--hair)}
+  .mark{font-family:var(--cond);font-weight:700;font-size:21px;letter-spacing:.14em}
+  .mark b{color:var(--amber);font-weight:700}
+  .port{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .port i{font-style:normal;color:var(--green)}
+
+  .board-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 0 10px;flex-wrap:wrap}
+  h1{font-family:var(--cond);font-size:44px;line-height:1.02;letter-spacing:-.01em;text-transform:uppercase}
+  h1 span{color:var(--amber)}
+  .quiet-line{display:flex;gap:26px;font-family:var(--mono);font-size:13px;color:var(--dim);padding:6px 0 18px;flex-wrap:wrap}
+  .quiet-line b{color:var(--ink);font-weight:600}
+  .tabs{display:flex;gap:0;border:1px solid var(--hair);border-radius:3px;overflow:hidden}
+  .tabs button{font:600 13px var(--mono);background:transparent;color:var(--dim);border:0;border-right:1px solid var(--hair);padding:9px 16px;cursor:pointer}
+  .tabs button:last-child{border-right:0}
+  .tabs button[aria-pressed="true"]{background:var(--amber);color:var(--amber-ink)}
+
+  /* berth rows: a departure board, not cards */
+  .row{display:grid;grid-template-columns:190px 1fr 150px 190px;gap:0;border-top:1px solid var(--hair);align-items:stretch}
+  .row:last-of-type{border-bottom:1px solid var(--hair)}
+  .row>div{padding:18px 16px}
+  .gate{font-family:var(--mono);font-size:12px;color:var(--dim);border-right:1px solid var(--hair)}
+  .gate .live{display:inline-flex;align-items:center;gap:6px;color:var(--green);font-weight:700;letter-spacing:.08em}
+  .gate .live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);animation:blink 1.6s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .gate .num{display:block;margin-top:10px;font-size:19px;color:var(--ink);font-weight:700}
+  .load h2{font-family:var(--cond);font-size:26px;letter-spacing:.01em;text-transform:uppercase}
+  .load p{margin-top:5px;font-size:14px;color:var(--dim);line-height:1.5}
+  .load .repo{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--amber);text-decoration:none;border-bottom:1px dashed rgba(255,176,0,.5)}
+  .load .repo:hover{border-bottom-style:solid}
+  .verified{display:inline-block;margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.06em}
+
+  .clock{border-left:1px solid var(--hair);border-right:1px solid var(--hair);display:flex;flex-direction:column;justify-content:center;gap:4px}
+  .clock .cap{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+  .clock .t{font-family:var(--mono);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .clock .t.urgent{color:var(--amber)}
+  .clock .close{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+  .manifest{display:flex;flex-direction:column;gap:8px;justify-content:center;background:var(--panel)}
+  .amt{font-family:var(--mono);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .amt small{font-size:12px;color:var(--dim);font-weight:400}
+  .meter{height:6px;background:#1b221e;border-radius:2px;overflow:hidden}
+  .meter i{display:block;height:100%;background:var(--amber);width:0;animation:load 1.1s cubic-bezier(.2,.8,.2,1) .2s forwards}
+  @keyframes load{to{width:var(--w,52%)}}
+  .tally{display:flex;gap:10px;font-family:var(--mono);font-size:12px;color:var(--dim);align-items:center}
+  .tally b{color:var(--ink)}
+  .tally .yes{color:var(--green)}
+
+  .verdict{grid-column:1/-1;display:flex;gap:14px;align-items:center;padding:14px 16px;border-top:1px dashed var(--hair);font-family:var(--mono);font-size:13px;background:#101512}
+  .verdict .chip{background:var(--green);color:#06120a;font-weight:700;padding:3px 9px;border-radius:2px;font-size:12px;letter-spacing:.05em}
+  .verdict a{color:var(--amber);text-decoration:none;border-bottom:1px dashed rgba(255,176,0,.55)}
+
+  .cta{display:flex;gap:12px;padding:26px 0 0;flex-wrap:wrap}
+  .btn{font:700 14px var(--mono);padding:13px 22px;border-radius:3px;border:1px solid var(--amber);background:var(--amber);color:var(--amber-ink);cursor:pointer;letter-spacing:.03em}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--hair)}
+  .btn.ghost:hover{border-color:var(--amber)}
+
+  @media (max-width:860px){
+    h1{font-size:32px}
+    .row{grid-template-columns:1fr;border-top:3px solid var(--hair)}
+    .row>div{padding:14px 4px}
+    .gate,.clock{border:0;border-bottom:1px dashed var(--hair)}
+    .clock{flex-direction:row;align-items:baseline;gap:12px}
+    .manifest{background:transparent;padding-top:10px!important}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.meter i{width:var(--w,52%)!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="mark">SHIP<b>GUARD</b></div>
+  <div class="port">GEN STUDIO NEXT · 61997 · <i>CONNECTED</i></div>
+</header>
+
+<div class="board-head">
+  <h1>Departing <span>rounds</span></h1>
+  <div class="tabs" role="group" aria-label="Filter raises">
+    <button aria-pressed="true">ALL 3</button>
+    <button aria-pressed="false">LIVE 3</button>
+    <button aria-pressed="false">ENDED 0</button>
+  </div>
+</div>
+
+<div class="quiet-line">
+  <span><b>3</b> projects raising</span>
+  <span><b>1.01</b> GEN escrowed on-chain</span>
+  <span><b>3</b> with verified GitHub</span>
+  <span><b>3</b> live rounds</span>
+</div>
+
+<section aria-label="Live raises">
+  <div class="row">
+    <div class="gate">
+      <span class="live">LIVE</span>
+      <span class="num">NOVA-01</span>
+      decision T−30 min
+    </div>
+    <div class="load">
+      <h2>Nova Freight <span class="verified">✓ VERIFIED</span></h2>
+      <p>On-chain logistics for West Africa. Escrow releases only if the milestone commit lands before close.</p>
+      <a class="repo" href="#">github.com/latest63/shipguard</a>
+    </div>
+    <div class="clock">
+      <span class="cap">Closes in</span>
+      <span class="t urgent" data-left="11776">03:16:16</span>
+      <span class="close">23:56 UTC · today</span>
+    </div>
+    <div class="manifest">
+      <div class="amt">1.01 <small>GEN escrowed</small></div>
+      <div class="meter" style="--w:64%"><i></i></div>
+      <div class="tally"><span class="yes">YES 4</span><span>NO 1</span><span>· 5 votes</span></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="gate">
+      <span class="live">LIVE</span>
+      <span class="num">KOLA-02</span>
+      decision T−30 min
+    </div>
+    <div class="load">
+      <h2>Kola Labs <span class="verified">✓ VERIFIED</span></h2>
+      <p>Open-source payments toolkit. Backers vote off-chain; money stays in the Vault contract either way.</p>
+      <a class="repo" href="#">github.com/latest63/shipguard</a>
+    </div>
+    <div class="clock">
+      <span class="cap">Closes in</span>
+      <span class="t urgent" data-left="15436">04:17:16</span>
+      <span class="close">00:57 UTC · tomorrow</span>
+    </div>
+    <div class="manifest">
+      <div class="amt">0.00 <small>GEN escrowed</small></div>
+      <div class="meter" style="--w:8%"><i></i></div>
+      <div class="tally"><span class="yes">YES 0</span><span>NO 0</span><span>· no votes yet</span></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="gate">
+      <span class="live">LIVE</span>
+      <span class="num">ATLS-03</span>
+      decision T−30 min
+    </div>
+    <div class="load">
+      <h2>Atlas Grid <span class="verified">✓ VERIFIED</span></h2>
+      <p>Community solar monitoring for micro-grids. Refunded in full if no commit arrives before close.</p>
+      <a class="repo" href="#">github.com/latest63/shipguard</a>
+    </div>
+    <div class="clock">
+      <span class="cap">Closes in</span>
+      <span class="t urgent" data-left="19096">05:18:16</span>
+      <span class="close">01:58 UTC · tomorrow</span>
+    </div>
+    <div class="manifest">
+      <div class="amt">0.00 <small>GEN escrowed</small></div>
+      <div class="meter" style="--w:8%"><i></i></div>
+      <div class="tally"><span class="yes">YES 0</span><span>NO 0</span><span>· no votes yet</span></div>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <span class="chip">RELEASED</span>
+    <span>Round KLLP-88 closed with commit <a href="#">7017b69</a> · settlement <a href="#">0x8e6b6ab9…</a></span>
+  </div>
+</section>
+
+<div class="cta">
+  <button class="btn">BACK A ROUND</button>
+  <button class="btn ghost">? HOW IT WORKS</button>
+</div>
+
+<script>
+  // signature: the clock ticks like a departure board
+  document.querySelectorAll('.t').forEach(el=>{
+    let s=+el.dataset.left;
+    setInterval(()=>{ s=s>0?s-1:0;
+      const h=String(Math.floor(s/3600)).padStart(2,'0'),
+            m=String(Math.floor(s%3600/60)).padStart(2,'0'),
+            x=String(s%60).padStart(2,'0');
+      el.textContent=h+':'+m+':'+x;
+      el.classList.toggle('urgent', s<1800);
+    },1000);
+  });
+</script>
+</body>
+</html>
