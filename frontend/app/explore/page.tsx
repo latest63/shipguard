@@ -10,6 +10,15 @@ import { Button } from "@/components/ui/button";
 import { useCountdown, type CountdownParts } from "@/lib/useCountdown";
 import { success } from "@/lib/utils/toast";
 
+type PollInfo = {
+  yes: number;
+  no: number;
+  state: "open" | "decided_commit" | "decided_no_commit" | string;
+  decided_at?: string | null;
+  commit_sha?: string | null;
+  reason?: string | null;
+};
+
 export default function ExplorePage() {
   const [raises, setRaises] = useState<ShippingRaise[]>([]);
   const [filter, setFilter] = useState<"all" | "live" | "ended">("all");
@@ -17,6 +26,15 @@ export default function ExplorePage() {
   const [loading, setLoading] = useState(true);
   // Live "GEN raised" total (micro-GEN, i.e. GEN * 1e6) read from the chain.
   const [raisedMicro, setRaisedMicro] = useState<number | null>(null);
+  // Poll tallies + states per raise (off-chain vote, see /api/raise/polls).
+  const [polls, setPolls] = useState<Record<string, PollInfo>>({});
+
+  const fetchPolls = useCallback(() => {
+    fetch("/api/raise/polls")
+      .then((r) => r.json())
+      .then((d) => setPolls(d && typeof d === "object" ? d : {}))
+      .catch(() => {});
+  }, []);
 
   // Read the genuine on-chain total (sum of every vault's total_deposited).
   const fetchChainTotal = useCallback(() => {
@@ -38,7 +56,8 @@ export default function ExplorePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
     fetchChainTotal();
-  }, [fetchChainTotal]);
+    fetchPolls();
+  }, [fetchChainTotal, fetchPolls]);
 
   // Filter raises: Live = close date in the future; Ended = close date passed.
   const now = Date.now();
@@ -55,7 +74,8 @@ export default function ExplorePage() {
   const refreshRaises = useCallback(() => {
     fetchRaises().then(setRaises).catch(() => {});
     fetchChainTotal();
-  }, [fetchChainTotal]);
+    fetchPolls();
+  }, [fetchChainTotal, fetchPolls]);
 
   // Genuine on-chain total: sum of every vault's total_deposited (wei → GEN).
   const totalRaised =
@@ -175,6 +195,7 @@ export default function ExplorePage() {
                 <RaiseCard
                   key={raise.id}
                   raise={raise}
+                  poll={polls[raise.id]}
                   onOpen={() => setSelected(raise)}
                 />
               ))}
@@ -188,8 +209,10 @@ export default function ExplorePage() {
         <RaiseDetailDialog
           raise={selected}
           allRaises={raises}
+          poll={polls[selected.id]}
           onClose={() => setSelected(null)}
           onDeposited={refreshRaises}
+          onPollUpdate={fetchPolls}
         />
       )}
     </div>
@@ -242,9 +265,11 @@ function initialsBadge(initials: string, tint: string, size = 10) {
 
 function RaiseCard({
   raise,
+  poll,
   onOpen,
 }: {
   raise: ShippingRaise;
+  poll?: PollInfo;
   onOpen: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -297,6 +322,27 @@ function RaiseCard({
         </div>
         <CountdownDisplay parts={countdown} compact />
       </div>
+
+      {/* Poll status — the commit-found indicator */}
+      {poll && (
+        <div
+          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[10px] font-semibold ${
+            poll.state === "decided_commit"
+              ? "border-green-500/30 bg-green-500/10 text-green-400"
+              : poll.state === "decided_no_commit"
+              ? "border-red-500/30 bg-red-500/10 text-red-400"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+          }`}
+        >
+          {poll.state === "decided_commit" ? (
+            <>✓ Commit found — releases to team</>
+          ) : poll.state === "decided_no_commit" ? (
+            <>✗ No commit — backers refunded</>
+          ) : (
+            <>Poll open · {poll.yes}–{poll.no} · commit leading at close</>
+          )}
+        </div>
+      )}
 
       {/* Footer: raised + repo + click hint */}
       <div className="flex items-center justify-between gap-2 min-w-0">
@@ -363,18 +409,136 @@ export function CountdownDisplay({
   );
 }
 
+/* ── Community poll widget ────────────────────────────────────────────────── */
+
+function PollWidget({
+  raiseId,
+  poll,
+  address,
+  closed,
+  onVoted,
+}: {
+  raiseId: string;
+  poll?: PollInfo;
+  address?: string | null;
+  closed: boolean;
+  onVoted?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const yes = poll?.yes ?? 0;
+  const no = poll?.no ?? 0;
+  const total = yes + no;
+  const state = poll?.state ?? "open";
+  const pct = total ? Math.round((yes / total) * 100) : 50;
+
+  const vote = async (choice: "commit" | "no_commit") => {
+    if (!address || busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/raise/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raise_id: raiseId, voter: address, choice }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "vote failed");
+      onVoted?.();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-4">
+      <div className="flex items-center justify-between gap-2 mb-2.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Community poll — should the team commit before close?
+        </p>
+        <span
+          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+            state === "decided_commit"
+              ? "border-green-500/30 bg-green-500/10 text-green-400"
+              : state === "decided_no_commit"
+              ? "border-red-500/30 bg-red-500/10 text-red-400"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+          }`}
+        >
+          {state === "decided_commit"
+            ? "Commit triggered ✓"
+            : state === "decided_no_commit"
+            ? "No commit ✗"
+            : "Voting open"}
+        </span>
+      </div>
+
+      {/* Tally bar */}
+      <div className="h-2 rounded-full overflow-hidden bg-red-500/20 flex mb-1.5">
+        <div className="bg-green-500 transition-all duration-500" style={{ width: `${total ? pct : 0}%` }} />
+      </div>
+      <div className="flex items-center justify-between text-[11px] mb-3">
+        <span className="text-green-400 font-semibold">Commit {yes}</span>
+        <span className="text-muted-foreground">{total} vote{total === 1 ? "" : "s"}</span>
+        <span className="text-red-400 font-semibold">{no} No commit</span>
+      </div>
+
+      {state === "open" && !closed ? (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => vote("commit")}
+              disabled={!address || busy}
+              className="px-3 py-2 rounded-md text-xs font-semibold border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy ? "..." : "Yes — commit"}
+            </button>
+            <button
+              onClick={() => vote("no_commit")}
+              disabled={!address || busy}
+              className="px-3 py-2 rounded-md text-xs font-semibold border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy ? "..." : "No — refund backers"}
+            </button>
+          </div>
+          {!address && (
+            <p className="text-[10px] text-muted-foreground mt-2">
+              Connect your wallet to vote (no transaction needed).
+            </p>
+          )}
+          {err && <p className="text-[10px] text-red-400 mt-2">{err}</p>}
+        </>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          {state === "decided_commit"
+            ? `Decided: commit ${poll?.reason || ""}${poll?.commit_sha ? ` (${poll.commit_sha.slice(0, 7)})` : ""} — the AI condition checks the repo at close.`
+            : state === "decided_no_commit"
+            ? `Decided: ${poll?.reason || "no commit"} — funds refund to backers at close.`
+            : "Voting is closed for this raise."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── Project detail dialog ────────────────────────────────────────────────── */
 
 function RaiseDetailDialog({
   raise,
   allRaises,
+  poll,
   onClose,
   onDeposited,
+  onPollUpdate,
 }: {
   raise: ShippingRaise;
   allRaises: ShippingRaise[];
+  poll?: PollInfo;
   onClose: () => void;
   onDeposited?: () => void;
+  onPollUpdate?: () => void;
 }) {
   const countdown = useCountdown(raise.closes_on);
   const verified = Boolean(raise.github_handle);
@@ -491,6 +655,11 @@ function RaiseDetailDialog({
           <MetricCard icon={Coins} label="GEN raised" value={raise.raised} sub="locked in this raise" />
           <MetricCard icon={Layers} label="Raises by project" value={String(projectRaiseCount)} sub="launched on-chain" />
           <MetricCard icon={ShieldCheck} label="Status" value={countdown.ended ? "Ended" : "Live"} sub={verified ? "GitHub verified" : "not verified"} />
+        </div>
+
+        {/* Community poll: commit or not — decided before close */}
+        <div className="p-6 border-b border-border/60">
+          <PollWidget raiseId={raise.id} poll={poll} address={address} closed={countdown.ended} onVoted={onPollUpdate} />
         </div>
 
         {/* Raise-specific details */}
