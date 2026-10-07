@@ -149,61 +149,22 @@ export async function GET(req: Request) {
       (existingRows || []).map((r: any) => [r.id, r.raised])
     );
 
-    // Index projects by wallet so we can link a raise's creator to a project.
-    const { data: projectsRaw } = await supabase.from("projects").select("*");
-    const projectByWallet = new Map<string, any>();
-    for (const p of projectsRaw || []) {
-      if (p.wallet_address) projectByWallet.set(p.wallet_address.toLowerCase(), p);
-    }
-
-    // 3. Insert missing vaults; refresh `raised` on existing rows from chain.
-    let inserted = 0;
+    // 3. Refresh `raised` on existing rows from chain.
+    //    No backfill inserts: rows are created only by /api/raise/create at
+    //    launch time, so test/legacy vaults never reappear on the explore page.
     let refreshed = 0;
     for (const vault of vaults) {
       const chainRaised = weiToGen(vault.total_deposited || "0");
-      if (existingById.has(vault.id)) {
-        if (existingById.get(vault.id) !== chainRaised) {
-          const { error } = await supabase
-            .from("raises")
-            .update({ raised: chainRaised })
-            .eq("id", vault.id);
-          if (!error) refreshed++;
-        }
-        continue;
+      if (existingById.has(vault.id) && existingById.get(vault.id) !== chainRaised) {
+        const { error } = await supabase
+          .from("raises")
+          .update({ raised: chainRaised })
+          .eq("id", vault.id);
+        if (!error) refreshed++;
       }
-      const condition = conditionByVault.get(vault.id) || {};
-      const d = deriveDisplay(vault, condition);
-      const creatorWallet = (vault.creator || "").toLowerCase();
-      const project = projectByWallet.get(creatorWallet) || {};
-      const profile = (project.profile_data || {}) as Record<string, unknown>;
-      // closes_on: vault deadline (unix-seconds or ISO) → ISO date column.
-      const closesOn = parseDeadline(d.deadline || "");
-      const { error } = await supabase.from("raises").insert({
-        id: vault.id,
-        company: project.name || d.company,
-        tagline: (profile.description as string) || d.tagline,
-        initials: d.initials,
-        tint: d.tint,
-        logo_url: project.logo_url || d.logo_url || null,
-        raised: chainRaised,
-        progress: 0,
-        closes_on: closesOn || null,
-        verified: Boolean(project.github_handle),
-        project_id: project.id || null,
-        project_wallet: project.wallet_address || creatorWallet || null,
-        github_handle: project.github_handle || null,
-        project_link: project.link || null,
-        twitter: (profile.twitter as string) || null,
-        telegram: (profile.telegram as string) || null,
-        discord: (profile.discord as string) || null,
-        description: (profile.description as string) || null,
-        creator: vault.creator || null,
-        repo_url: condition.check_url || null,
-      });
-      if (!error) inserted++;
     }
 
-    return NextResponse.json({ synced: inserted, refreshed, total: vaults.length });
+    return NextResponse.json({ synced: 0, refreshed, total: vaults.length });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Sync failed" },
