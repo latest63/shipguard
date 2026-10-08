@@ -24,8 +24,13 @@ const num = (k: string, d: number) => {
 const DURATION_SEC = num("DEMO_RAISE_DURATION_SEC", 5 * 3600); // window length
 const DECISION_OFFSET_SEC = num("DEMO_DECISION_OFFSET_SEC", 30 * 60); // T-30min
 const CREATE_INTERVAL_SEC = num("DEMO_CREATE_INTERVAL_SEC", 60 * 60); // new raise cadence
+// Milestone commits append to demo/raise-commits.md, so this feed contains ONLY
+// milestone commits. Watching the whole repo instead (commits/main.atom) let any
+// unrelated push during a round satisfy the condition — the product was grading
+// its own development commits. Path scope = dev work can never release escrow.
 const CHECK_URL =
-  process.env.DEMO_CHECK_URL || "https://github.com/latest63/shipguard/commits/main.atom";
+  process.env.DEMO_CHECK_URL ||
+  "https://github.com/latest63/shipguard/commits/main/demo/raise-commits.md.atom";
 const REPO_DIR = process.env.DEMO_REPO_DIR || path.join(process.cwd(), "..");
 const MAX_EVAL_ATTEMPTS = 5;
 
@@ -78,12 +83,20 @@ async function createDemoRaise(): Promise<string> {
   const openedAt = new Date(nowSec * 1000).toISOString();
   const closesAt = new Date(deadline * 1000).toISOString();
 
+  // The verdict must key on THIS raise. Timestamp-only matching let any push
+  // (ours included) win the round; the milestone commit always carries the id.
   const condition =
-    `CHECK URL is an Atom feed of commits where each <entry> has an absolute ` +
-    `<updated> timestamp (ISO 8601). SUCCESS if at least one commit entry has ` +
-    `an <updated> timestamp strictly between the raise window open ` +
-    `(${openedAt}) and close (${closesAt}). If every entry falls outside that ` +
-    `window, the condition is NOT met.`;
+    `CHECK URL is an Atom feed of git commits where each <entry> has a <title> ` +
+    `(the commit subject line) and an <updated> timestamp (ISO 8601). ` +
+    `SUCCESS only if at least one entry satisfies BOTH of these: ` +
+    `(1) its <title> contains this exact raise id "${id}", and ` +
+    `(2) its <updated> is strictly between the raise window open ` +
+    `(${openedAt}) and close (${closesAt}). ` +
+    `An entry whose <title> does not contain "${id}" NEVER counts, no matter ` +
+    `when it was pushed — commits unrelated to this raise are irrelevant. ` +
+    `If the feed contains no entry with "${id}" in its <title>, the condition ` +
+    `is NOT met; report verified=false, confident=true. Reserve confident=false ` +
+    `for a feed that could not be fetched or parsed at all.`;
 
   const regFees = await client.estimateTransactionFees({});
   const regTx = await client.writeContract({
@@ -229,6 +242,33 @@ async function decideDuePolls() {
 }
 
 // ── 3. Settle closed raises: evaluate → release / refund ────────────────────
+// Rounds registered BEFORE the condition fix watched the whole repo feed, so any
+// push in the window (our own dev commits included) satisfied them. Those legacy
+// rounds are settled from milestone evidence instead: if no commit for THIS raise
+// landed in its window we refund straight away and never ask the governor — an
+// eager evaluate() would store verdict=success, and vault.refund() hard-rejects a
+// success verdict ("use release() instead"), trapping the depositors' money.
+const LEGACY_CONDITION_MARKER = "each <entry> has an absolute";
+export const isLegacyCondition = (text: unknown) =>
+  typeof text === "string" && text.includes(LEGACY_CONDITION_MARKER);
+
+// True only if the milestone feed shows a commit titled with this raise id whose
+// <updated> falls strictly inside the round's own window (deadline − duration).
+export async function milestoneCommitInWindow(raiseId: string, deadlineSec: number): Promise<boolean> {
+  const res = await fetch(CHECK_URL);
+  if (!res.ok) throw new Error(`milestone feed HTTP ${res.status}`);
+  const xml = await res.text();
+  const closeMs = Number(deadlineSec) * 1000;
+  const openMs = closeMs - DURATION_SEC * 1000;
+  for (const entry of xml.split("<entry>").slice(1)) {
+    const title = /<title>([\s\S]*?)<\/title>/.exec(entry)?.[1] ?? "";
+    if (!title.includes(raiseId)) continue;
+    const updated = Date.parse(/<updated>([\s\S]*?)<\/updated>/.exec(entry)?.[1] ?? "");
+    if (Number.isFinite(updated) && updated > openMs && updated < closeMs) return true;
+  }
+  return false;
+}
+
 async function settleClosedRaises() {
   const now = Date.now();
   const { data: polls } = await db()
@@ -263,6 +303,40 @@ async function settleClosedRaises() {
       if (!vault || vault.status !== "active") {
         await db().from("raise_polls").update({ settled_at: new Date().toISOString(), reason: `already ${vault?.status || "missing"}` }).eq("raise_id", p.raise_id);
         continue;
+      }
+
+      // Legacy rounds (registered before the condition fix) must never be
+      // evaluated: their condition matched ANY push in the window, so the
+      // governor would confidently say success for rounds the community
+      // rejected — and a success verdict permanently blocks refund().
+      if (isLegacyCondition(vault.condition)) {
+        if (BigInt(vault.total_deposited || "0") === 0n) {
+          await db().from("raise_polls")
+            .update({ settled_at: new Date().toISOString(), reason: "legacy round — empty vault, nothing to settle" })
+            .eq("raise_id", p.raise_id);
+          continue;
+        }
+        if (!(await milestoneCommitInWindow(p.raise_id, Number(vault.deadline)))) {
+          const fees = await client.estimateTransactionFees({});
+          const tx = await client.writeContract({
+            address: VAULT_CONTRACT as `0x${string}`,
+            functionName: "refund",
+            args: [p.raise_id],
+            fees,
+          });
+          const receipt = await client.waitForTransactionReceipt({ hash: tx, waitUntil: "finalized", retries: 400, interval: 5000 });
+          if (isSuccessful(receipt)) {
+            await db().from("raise_polls")
+              .update({ settled_at: new Date().toISOString(), reason: `refund: legacy condition, no milestone commit for this raise · tx ${String(tx)}` })
+              .eq("raise_id", p.raise_id);
+            console.log(`[demo-loop] ${p.raise_id}: legacy refund — no milestone commit · tx ${String(tx)}`);
+          } else {
+            console.error(`[demo-loop] ${p.raise_id}: legacy refund failed on-chain: ${j((receipt as any).txExecutionError ?? "")}`);
+          }
+          continue;
+        }
+        // A genuine milestone commit landed in this round's window — proceed to
+        // the governor, which will confirm it (the legacy condition holds there).
       }
 
       // Ask the governor for an on-chain verdict (AI consensus on the repo).
